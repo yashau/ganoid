@@ -1,5 +1,4 @@
 # set-log-level.ps1 — reinstalls ganoidd service with a custom log level.
-# Must be run as Administrator.
 #
 # Usage:
 #   .\set-log-level.ps1 debug
@@ -13,6 +12,12 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Self-elevate if not already running as Administrator.
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" $Level"
+    exit
+}
 
 $ServiceName = "ganoidd"
 $BinPath = (Get-WmiObject Win32_Service -Filter "Name='$ServiceName'").PathName
