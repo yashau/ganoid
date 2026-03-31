@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -132,7 +133,7 @@ func startServer(port int) (shutdown func(), err error) {
 
 func configDirPath() string {
 	if runtime.GOOS == "windows" {
-		return os.Getenv("APPDATA") + `\ganoid`
+		return filepath.Join(os.Getenv("ProgramData"), "Ganoid")
 	}
 	home, _ := os.UserHomeDir()
 	return home + "/.config/ganoid"
