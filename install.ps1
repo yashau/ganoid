@@ -2,41 +2,11 @@
 .SYNOPSIS
     Ganoid installer — downloads binaries from GitHub releases and configures the system.
 
-.DESCRIPTION
-    Downloads ganoidd.exe and ganoid.exe from the latest GitHub release, installs
-    ganoidd as a Windows service (auto-start, LocalSystem), and sets ganoid up to
-    run at user login via the Startup folder.
-
-    Automatically re-launches with elevation if not running as Administrator.
-
 .EXAMPLE
     irm https://raw.githubusercontent.com/yashau/ganoid/main/install.ps1 | iex
 #>
 
-# ── Elevation ─────────────────────────────────────────────────────────────────
-# Must run before Set-StrictMode / $ErrorActionPreference so the relaunch path
-# is always reachable. When piped via iex, $PSCommandPath is null — instead we
-# write $MyInvocation.MyCommand.ScriptBlock to a temp file and relaunch that.
-
-function Test-Elevated {
-    [bool]([Security.Principal.WindowsIdentity]::GetCurrent().Groups -match 'S-1-5-32-544')
-}
-
-if (-not (Test-Elevated)) {
-    Write-Host "Ganoid installer requires administrator privileges." -ForegroundColor Yellow
-    Write-Host "Re-launching with elevation..." -ForegroundColor Yellow
-
-    $rand   = [System.IO.Path]::GetRandomFileName().Replace('.', '')
-    $tmp    = "$env:TEMP\ganoid_install_$rand.ps1"
-    Set-Content -Path $tmp -Value $MyInvocation.MyCommand.ScriptBlock -Encoding UTF8
-
-    Start-Process powershell -Verb RunAs `
-        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$tmp`""
-    exit
-}
-
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+param([switch]$AdminTasks)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 $Repo               = 'yashau/ganoid'
@@ -45,19 +15,56 @@ $ServiceName        = 'ganoidd'
 $ServiceDisplayName = 'Ganoid Daemon'
 $ServiceDesc        = 'Tailscale profile coordination daemon for Ganoid'
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
 function Write-Step([string]$Msg) { Write-Host "`n==> $Msg" -ForegroundColor Cyan }
 function Write-OK([string]$Msg)   { Write-Host "    OK  $Msg" -ForegroundColor Green }
-function Write-Warn([string]$Msg) { Write-Host "    WARN $Msg" -ForegroundColor Yellow }
+
+# ── Non-elevated entry point ──────────────────────────────────────────────────
+# Runs first. Saves the script to a temp file, runs admin tasks elevated
+# (and waits), then launches ganoid in the current (non-elevated) context.
+if (-not $AdminTasks) {
+    $ErrorActionPreference = 'Stop'
+
+    # Save this script to a temp file so it can be re-launched with -AdminTasks.
+    $rand = [System.IO.Path]::GetRandomFileName().Replace('.', '')
+    $tmp  = "$env:TEMP\ganoid_install_$rand.ps1"
+    Set-Content -Path $tmp -Value $MyInvocation.MyCommand.ScriptBlock -Encoding UTF8
+
+    Write-Step "Running admin tasks (UAC prompt may appear)"
+    $proc = Start-Process powershell -Verb RunAs -PassThru -Wait `
+        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$tmp`" -AdminTasks"
+
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+
+    if ($proc.ExitCode -ne 0) {
+        Write-Host "`n  Installation failed (exit code $($proc.ExitCode))." -ForegroundColor Red
+        exit $proc.ExitCode
+    }
+
+    # Give the service a moment to write daemon.json.
+    Start-Sleep -Seconds 2
+
+    Write-Step "Launching ganoid tray"
+    Start-Process -FilePath "$InstallDir\ganoid.exe" -WindowStyle Hidden
+    Write-OK "ganoid launched"
+
+    Write-Host ""
+    Write-Host "  Ganoid installed successfully." -ForegroundColor Green
+    Write-Host "  ganoidd runs as a Windows service (auto-start on boot)."
+    Write-Host "  ganoid    runs in the system tray (auto-start on login)."
+    Write-Host ""
+    exit 0
+}
+
+# ── Admin tasks (elevated) ────────────────────────────────────────────────────
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
 # ── Fetch latest release ───────────────────────────────────────────────────────
 Write-Step "Fetching latest release from github.com/$Repo"
 
-$apiUrl  = "https://api.github.com/repos/$Repo/releases/latest"
 $headers = @{ 'User-Agent' = 'ganoid-installer/1.0' }
-
 try {
-    $release = Invoke-RestMethod -Uri $apiUrl -Headers $headers
+    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers $headers
 } catch {
     Write-Error "Failed to fetch release info: $_"
     exit 1
@@ -68,10 +75,7 @@ Write-OK "Latest release: $tag"
 
 function Get-AssetUrl([string]$Name) {
     $asset = $release.assets | Where-Object { $_.name -eq $Name } | Select-Object -First 1
-    if (-not $asset) {
-        Write-Error "Asset '$Name' not found in release $tag"
-        exit 1
-    }
+    if (-not $asset) { Write-Error "Asset '$Name' not found in release $tag"; exit 1 }
     return $asset.browser_download_url
 }
 
@@ -80,11 +84,9 @@ $ganoid_url  = Get-AssetUrl 'ganoid.exe'
 
 # ── Create install directory ───────────────────────────────────────────────────
 Write-Step "Installing to $InstallDir"
-if (-not (Test-Path $InstallDir)) {
-    New-Item -ItemType Directory -Path $InstallDir | Out-Null
-}
+if (-not (Test-Path $InstallDir)) { New-Item -ItemType Directory -Path $InstallDir | Out-Null }
 
-# ── Stop existing service before replacing binaries ───────────────────────────
+# ── Stop existing service and tray ────────────────────────────────────────────
 $existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existingService -and $existingService.Status -eq 'Running') {
     Write-Step "Stopping existing $ServiceName service"
@@ -93,14 +95,7 @@ if ($existingService -and $existingService.Status -eq 'Running') {
     Write-OK "Service stopped"
 }
 
-# ── Kill existing ganoid.exe tray process ─────────────────────────────────────
-$trayProc = Get-Process -Name 'ganoid' -ErrorAction SilentlyContinue
-if ($trayProc) {
-    Write-Step "Stopping ganoid tray process"
-    $trayProc | Stop-Process -Force
-    Start-Sleep -Seconds 1
-    Write-OK "Process stopped"
-}
+Get-Process -Name 'ganoid' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 # ── Download binaries ──────────────────────────────────────────────────────────
 Write-Step "Downloading ganoidd.exe"
@@ -111,7 +106,7 @@ Write-Step "Downloading ganoid.exe"
 Invoke-WebRequest -Uri $ganoid_url -OutFile "$InstallDir\ganoid.exe" -UseBasicParsing
 Write-OK "ganoid.exe saved"
 
-# ── Add install dir to system PATH (idempotent) ────────────────────────────────
+# ── System PATH ───────────────────────────────────────────────────────────────
 Write-Step "Updating system PATH"
 $syspath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
 if ($syspath -notlike "*$InstallDir*") {
@@ -121,30 +116,21 @@ if ($syspath -notlike "*$InstallDir*") {
     Write-OK "Already in system PATH"
 }
 
-# ── Install / update Windows service ──────────────────────────────────────────
+# ── Windows service ───────────────────────────────────────────────────────────
 Write-Step "Configuring Windows service '$ServiceName'"
-
 $binPath = "`"$InstallDir\ganoidd.exe`""
-
 if ($existingService) {
     sc.exe config $ServiceName binPath= $binPath | Out-Null
     Write-OK "Updated existing service"
 } else {
-    sc.exe create $ServiceName `
-        binPath= $binPath `
-        DisplayName= $ServiceDisplayName `
-        start= delayed-auto `
-        obj= LocalSystem | Out-Null
+    sc.exe create $ServiceName binPath= $binPath DisplayName= $ServiceDisplayName start= delayed-auto obj= LocalSystem | Out-Null
     Write-OK "Service created"
 }
-
 sc.exe description $ServiceName $ServiceDesc | Out-Null
-
-# Failure recovery: restart after 5 s, up to 3 times per hour.
 sc.exe failure $ServiceName reset= 3600 actions= restart/5000/restart/5000/restart/5000 | Out-Null
 Write-OK "Failure recovery configured"
 
-# ── Create shortcuts ───────────────────────────────────────────────────────────
+# ── Shortcuts ─────────────────────────────────────────────────────────────────
 function New-Shortcut([string]$LnkPath, [string]$TargetPath, [string]$Arguments = '', [string]$Desc = '') {
     $wsh = New-Object -ComObject WScript.Shell
     $sc  = $wsh.CreateShortcut($LnkPath)
@@ -155,38 +141,19 @@ function New-Shortcut([string]$LnkPath, [string]$TargetPath, [string]$Arguments 
     $sc.Save()
 }
 
-Write-Step "Creating Start Menu shortcuts"
+Write-Step "Creating shortcuts"
 $startMenu = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Ganoid"
 if (-not (Test-Path $startMenu)) { New-Item -ItemType Directory -Path $startMenu | Out-Null }
-
 New-Shortcut "$startMenu\Ganoid.lnk" "$InstallDir\ganoid.exe" '' 'Ganoid — Tailscale profile manager'
-Write-OK "Start Menu shortcuts created"
+Write-OK "Start Menu shortcut created"
 
-Write-Step "Adding ganoid to current user Startup"
 $startup = [Environment]::GetFolderPath('Startup')
 New-Shortcut "$startup\Ganoid.lnk" "$InstallDir\ganoid.exe" '' 'Ganoid — Tailscale profile manager'
 Write-OK "Startup shortcut created"
 
-# ── Start the service ──────────────────────────────────────────────────────────
+# ── Start service ─────────────────────────────────────────────────────────────
 Write-Step "Starting $ServiceName service"
 Start-Service -Name $ServiceName
 Write-OK "Service started"
 
-# ── Launch ganoid tray ─────────────────────────────────────────────────────────
-Write-Step "Launching ganoid tray"
-# Give the service a moment to write daemon.json before ganoid tries to read it.
-Start-Sleep -Seconds 2
-# Launch via explorer.exe so ganoid inherits the interactive user token,
-# not the elevated Administrator token from this installer.
-Start-Process explorer.exe -ArgumentList "`"$InstallDir\ganoid.exe`""
-Write-OK "ganoid launched"
-
-# ── Done ───────────────────────────────────────────────────────────────────────
-Write-Host ""
-Write-Host "  Ganoid $tag installed successfully." -ForegroundColor Green
-Write-Host ""
-Write-Host "  ganoidd runs as a Windows service (auto-start on boot)."
-Write-Host "  ganoid    runs in the system tray (auto-start on login)."
-Write-Host ""
-Write-Host "  To uninstall: irm https://raw.githubusercontent.com/yashau/ganoid/main/uninstall.ps1 | iex"
-Write-Host ""
+exit 0

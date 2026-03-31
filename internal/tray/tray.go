@@ -149,10 +149,8 @@ func OpenBrowser(url string) {
 	var args []string
 	switch runtime.GOOS {
 	case "windows":
-		// explorer.exe always runs in the interactive user context, so it
-		// correctly resolves the default browser even when the caller is elevated.
-		cmd = "explorer.exe"
-		args = []string{url}
+		cmd = "rundll32"
+		args = []string{"url.dll,FileProtocolHandler", url}
 	case "darwin":
 		cmd = "open"
 		args = []string{url}
