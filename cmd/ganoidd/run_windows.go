@@ -7,14 +7,21 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"runtime"
 	"syscall"
 
 	"golang.org/x/sys/windows/svc"
+
+	"github.com/yashau/ganoid/internal/logger"
 )
 
 func main() {
-	port := flag.Int("port", 57400, "HTTP port for the web UI and API")
+	port     := flag.Int("port", 57400, "HTTP port for the web UI and API")
+	logLevel := flag.String("log-level", "info", "Log level: debug, info, warn, error")
 	flag.Parse()
+
+	initLogger(*logLevel)
 
 	isService, err := svc.IsWindowsService()
 	if err != nil {
@@ -30,6 +37,21 @@ func main() {
 
 	// Interactive / debug mode: use signal handling.
 	runInteractive(*port)
+}
+
+func initLogger(level string) {
+	logPath := filepath.Join(logDirPath(), "ganoidd.log")
+	if err := logger.Init(logPath, logger.ParseLevel(level)); err != nil {
+		log.Printf("warning: could not open log file %s: %v", logPath, err)
+	}
+}
+
+func logDirPath() string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(os.Getenv("ProgramData"), "Ganoid")
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "ganoid")
 }
 
 // ganoidSvc implements the Windows Service Control Manager protocol.

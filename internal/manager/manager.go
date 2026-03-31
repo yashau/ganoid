@@ -16,6 +16,7 @@ import (
 
 	"github.com/yashau/ganoid/internal/config"
 	"github.com/yashau/ganoid/internal/event"
+	"github.com/yashau/ganoid/internal/logger"
 	"github.com/yashau/ganoid/internal/platform"
 )
 
@@ -80,24 +81,30 @@ func (m *Manager) SwitchProfile(ctx context.Context, targetID string) <-chan eve
 			return
 		}
 
+		logger.Info("switch started: %q -> %q", currentProfile.Name, targetProfile.Name)
+
 		// Step 1: Stop Tailscale daemon first so state files are stable for backup
 		send(1, "Stopping Tailscale daemon…")
+		logger.Debug("step 1: stopping Tailscale service")
 		if err := m.plat.StopService(); err != nil {
+			logger.Error("step 1: stop service failed: %v", err)
 			fail(1, fmt.Errorf("stop service: %w", err))
 			return
 		}
+		logger.Debug("step 1: Tailscale service stopped")
 
 		// Step 2: Back up current state dir (before any changes, while state is clean)
 		send(2, fmt.Sprintf("Backing up state for profile %q…", currentProfile.Name))
 		backupDest := m.plat.ProfileStateDirPath(currentProfile.ID)
+		logger.Debug("step 2: verifying live state before backup")
 		if err := verifyState(m.plat.StateDirPath()); err != nil {
+			logger.Error("step 2: live state invalid: %v", err)
 			fail(2, fmt.Errorf("live state is invalid, refusing to overwrite backup: %w", err))
 			return
 		}
-		// Confirm the live state's ControlURL actually matches the current profile,
-		// not the target — guards against backing up the wrong state.
 		liveURL, err := stateControlURL(m.plat.StateDirPath())
 		if err != nil {
+			logger.Error("step 2: read live ControlURL: %v", err)
 			fail(2, fmt.Errorf("read live ControlURL: %w", err))
 			return
 		}
@@ -105,22 +112,30 @@ func (m *Manager) SwitchProfile(ctx context.Context, targetID string) <-chan eve
 		if expectedURL == "" {
 			expectedURL = "https://controlplane.tailscale.com"
 		}
+		logger.Debug("step 2: live ControlURL=%q expected=%q", liveURL, expectedURL)
 		if liveURL != expectedURL {
+			logger.Error("step 2: ControlURL mismatch — live=%q expected=%q, aborting backup", liveURL, expectedURL)
 			fail(2, fmt.Errorf("live state ControlURL %q does not match current profile %q (%q) — aborting to avoid corrupting backup", liveURL, currentProfile.Name, expectedURL))
 			return
 		}
 		rotateBackup(backupDest, 3)
+		logger.Debug("step 2: backing up %s -> %s", m.plat.StateDirPath(), backupDest)
 		if err := copyDir(m.plat.StateDirPath(), backupDest); err != nil {
+			logger.Error("step 2: backup failed: %v", err)
 			fail(2, fmt.Errorf("backup state: %w", err))
 			return
 		}
+		logger.Debug("step 2: backup ok")
 
 		// Step 3: Clear active state dir
 		send(3, "Clearing active Tailscale state…")
+		logger.Debug("step 3: clearing %s", m.plat.StateDirPath())
 		if err := clearDir(m.plat.StateDirPath()); err != nil {
+			logger.Error("step 3: clear state failed: %v", err)
 			fail(3, fmt.Errorf("clear state: %w", err))
 			return
 		}
+		logger.Debug("step 3: clear ok")
 
 		// Step 4: Restore target profile state (if exists), trying versions if needed
 		send(4, fmt.Sprintf("Restoring state for profile %q…", targetProfile.Name))
@@ -135,51 +150,68 @@ func (m *Manager) SwitchProfile(ctx context.Context, targetID string) <-chan eve
 				continue
 			}
 			if err := verifyState(candidate); err != nil {
+				logger.Debug("step 4: skipping %s: invalid state: %v", candidate, err)
 				continue
 			}
 			candidateURL, err := stateControlURL(candidate)
 			if err != nil || candidateURL != wantURL {
-				continue // ControlURL mismatch — skip
+				logger.Debug("step 4: skipping %s: ControlURL=%q want=%q", candidate, candidateURL, wantURL)
+				continue
 			}
+			logger.Debug("step 4: restoring %s -> %s", candidate, m.plat.StateDirPath())
 			if err := copyDir(candidate, m.plat.StateDirPath()); err != nil {
+				logger.Error("step 4: restore failed: %v", err)
 				fail(4, fmt.Errorf("restore state: %w", err))
 				return
 			}
+			logger.Debug("step 4: restore ok")
 			restored = true
 			break
 		}
 		if !restored {
+			logger.Debug("step 4: no valid saved state for %q, starting fresh", targetProfile.Name)
 			send(4, "No valid saved state for target profile — starting fresh")
 		}
 
 		// Step 5: Write login server to registry
 		send(5, "Configuring login server…")
+		logger.Debug("step 5: setting login server to %q", targetProfile.LoginServer)
 		if targetProfile.LoginServer == "" {
 			if err := m.plat.ClearLoginServer(); err != nil {
+				logger.Error("step 5: clear login server failed: %v", err)
 				fail(5, fmt.Errorf("clear login server: %w", err))
 				return
 			}
 		} else {
 			if err := m.plat.SetLoginServer(targetProfile.LoginServer); err != nil {
+				logger.Error("step 5: set login server failed: %v", err)
 				fail(5, fmt.Errorf("set login server: %w", err))
 				return
 			}
 		}
+		logger.Debug("step 5: login server configured")
 
 		// Step 6: Start Tailscale daemon
 		send(6, "Starting Tailscale daemon…")
+		logger.Debug("step 6: starting Tailscale service")
 		if err := m.plat.StartService(); err != nil {
+			logger.Error("step 6: start service failed: %v", err)
 			fail(6, fmt.Errorf("start service: %w", err))
 			return
 		}
+		logger.Debug("step 6: Tailscale service started")
 
-		// Steps 7-8: placeholder sends to keep total=8 progress consistent
 		send(7, "Finalizing…")
+		logger.Debug("step 7: finalizing")
+
 		send(8, "Updating active profile…")
+		logger.Debug("step 8: setting active profile to %q", targetID)
 		if err := m.cfg.SetActiveProfile(targetID); err != nil {
+			logger.Error("step 8: update active profile failed: %v", err)
 			fail(8, fmt.Errorf("update active profile: %w", err))
 			return
 		}
+		logger.Info("switch complete: active profile is now %q", targetProfile.Name)
 
 		ch <- event.SwitchEvent{Step: total, Total: total, Message: "Switch complete", Done: true}
 

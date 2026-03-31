@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tailscale status:*)",
+      "Bash(tailscale version:*)",
+      "Bash(tailscale set:*)",
+      "Bash(echo \"exit: $?\")"
+    ]
+  }
+}
