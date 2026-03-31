@@ -19,13 +19,18 @@ if (-not (Test-Elevated)) {
     $tmp  = "$env:TEMP\ganoid_install_$rand.ps1"
     Set-Content -Path $tmp -Value $MyInvocation.MyCommand.ScriptBlock -Encoding UTF8
 
+    # Preserve the -Preview flag across elevation by appending it if set.
+    $previewFlag = if ((Get-Variable -Name GanoidPreview -ValueOnly -ErrorAction SilentlyContinue) -eq $true) { ' -Preview' } else { '' }
     Start-Process powershell -Verb RunAs `
-        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$tmp`""
+        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$tmp`"$previewFlag"
     exit
 }
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# $GanoidPreview can be set before piping to iex to install the latest pre-release.
+$Preview = (Get-Variable -Name GanoidPreview -ValueOnly -ErrorAction SilentlyContinue) -eq $true
 
 # ── Config ────────────────────────────────────────────────────────────────────
 $Repo               = 'yashau/ganoid'
@@ -38,18 +43,30 @@ function Write-Step([string]$Msg) { Write-Host "`n==> $Msg" -ForegroundColor Cya
 function Write-OK([string]$Msg)   { Write-Host "    OK  $Msg" -ForegroundColor Green }
 
 # ── Fetch latest release ───────────────────────────────────────────────────────
-Write-Step "Fetching latest release from github.com/$Repo"
-
 $headers = @{ 'User-Agent' = 'ganoid-installer/1.0' }
-try {
-    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers $headers
-} catch {
-    Write-Error "Failed to fetch release info: $_"
-    exit 1
+
+if ($Preview) {
+    Write-Step "Fetching latest pre-release from github.com/$Repo"
+    try {
+        $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases" -Headers $headers
+        $release  = $releases | Where-Object { $_.prerelease -eq $true } | Select-Object -First 1
+        if (-not $release) { Write-Error "No pre-release found."; exit 1 }
+    } catch {
+        Write-Error "Failed to fetch release info: $_"
+        exit 1
+    }
+} else {
+    Write-Step "Fetching latest stable release from github.com/$Repo"
+    try {
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers $headers
+    } catch {
+        Write-Error "Failed to fetch release info: $_"
+        exit 1
+    }
 }
 
 $tag = $release.tag_name
-Write-OK "Latest release: $tag"
+Write-OK "Release: $tag$(if ($Preview) { ' (pre-release)' })"
 
 function Get-AssetUrl([string]$Name) {
     $asset = $release.assets | Where-Object { $_.name -eq $Name } | Select-Object -First 1
