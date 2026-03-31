@@ -48,21 +48,25 @@ func New(cfg *config.Config, mgr *manager.Manager, uiFS http.FileSystem, version
 		s.router.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 			rctx := chi.RouteContext(r.Context())
 			pathPrefix := strings.TrimSuffix(rctx.RoutePattern(), "/*")
-			// Check if the file exists; if not, serve index.html.
 			filePath := strings.TrimPrefix(r.URL.Path, pathPrefix)
 			if filePath == "" {
 				filePath = "/"
 			}
+			// Serve a real file if it exists and is not a directory.
+			// Everything else (unknown routes, root, directories) gets index.html
+			// so SvelteKit's client-side router handles navigation.
 			f, err := uiFS.Open(filePath)
-			if err != nil {
-				// Not a real file — serve the SPA fallback so client-side routing handles it.
-				r2 := r.Clone(r.Context())
-				r2.URL.Path = pathPrefix + "/200.html"
-				http.StripPrefix(pathPrefix, http.FileServer(uiFS)).ServeHTTP(w, r2)
-				return
+			if err == nil {
+				info, statErr := f.Stat()
+				f.Close()
+				if statErr == nil && !info.IsDir() {
+					http.StripPrefix(pathPrefix, http.FileServer(uiFS)).ServeHTTP(w, r)
+					return
+				}
 			}
-			f.Close()
-			http.StripPrefix(pathPrefix, http.FileServer(uiFS)).ServeHTTP(w, r)
+			r2 := r.Clone(r.Context())
+			r2.URL.Path = pathPrefix + "/index.html"
+			http.StripPrefix(pathPrefix, http.FileServer(uiFS)).ServeHTTP(w, r2)
 		})
 	} else {
 		s.router.Get("/*", func(w http.ResponseWriter, r *http.Request) {

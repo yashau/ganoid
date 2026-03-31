@@ -7,7 +7,7 @@ const config = {
 			// Output goes to ../../cmd/ganoidd/ui/dist so ganoidd's embed picks it up
 			pages: '../cmd/ganoidd/ui/dist',
 			assets: '../cmd/ganoidd/ui/dist',
-			fallback: '200.html',
+			fallback: 'index.html',
 			precompress: false,
 			strict: false
 		})
