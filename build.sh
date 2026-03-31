@@ -26,6 +26,7 @@ MAJOR="${MAJOR:-0}"; MINOR="${MINOR:-1}"; PATCH="${PATCH:-0}"
 VERSION_STRING="${MAJOR}.${MINOR}.${PATCH}.0"
 
 LDFLAGS="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME} -X main.gitCommit=${GIT_COMMIT}"
+LDFLAGS_WINGUI="-s -w -H=windowsgui -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME} -X main.gitCommit=${GIT_COMMIT}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -88,7 +89,9 @@ build_pair() {
     echo -e "  \033[32mOK  ${OUTD}\033[0m"
 
     echo -e "\033[33mBuilding ganoid (${OS}/${ARCH})...\033[0m"
-    CGO_ENABLED=0 GOOS="$OS" GOARCH="$ARCH" go build -ldflags "${LDFLAGS}" -o "$OUTG" ./cmd/ganoid
+    GANOID_FLAGS="${LDFLAGS}"
+    [[ "$OS" == "windows" ]] && GANOID_FLAGS="${LDFLAGS_WINGUI}"
+    CGO_ENABLED=0 GOOS="$OS" GOARCH="$ARCH" go build -ldflags "${GANOID_FLAGS}" -o "$OUTG" ./cmd/ganoid
     echo -e "  \033[32mOK  ${OUTG}\033[0m"
 }
 

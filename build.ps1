@@ -24,9 +24,10 @@ $Minor = if ($VersionParts.Length -gt 1) { [int]$VersionParts[1] } else { 1 }
 $Patch = if ($VersionParts.Length -gt 2) { [int]$VersionParts[2] } else { 0 }
 $VersionString = "$Major.$Minor.$Patch.0"
 
-$LdBase   = "-s -w"
-$LdVars   = "-X main.version=$Version -X main.buildTime=$BuildTime -X main.gitCommit=$GitCommit"
-$LdFlags  = "$LdBase $LdVars"
+$LdBase       = "-s -w"
+$LdVars       = "-X main.version=$Version -X main.buildTime=$BuildTime -X main.gitCommit=$GitCommit"
+$LdFlags      = "$LdBase $LdVars"
+$LdFlagsWinGUI = "$LdBase -H=windowsgui $LdVars"
 
 Write-Host "`nBuilding Ganoid" -ForegroundColor Cyan
 Write-Host "  Version:    $Version"
@@ -130,7 +131,8 @@ try {
         Write-Host "  OK  $OutD" -ForegroundColor Green
 
         Write-Host "Building ganoid ($OS/$Arch)..." -ForegroundColor Yellow
-        & go build -ldflags $LdFlags -o $OutG ./cmd/ganoid
+        $GanoidFlags = if ($OS -eq "windows") { $LdFlagsWinGUI } else { $LdFlags }
+        & go build -ldflags $GanoidFlags -o $OutG ./cmd/ganoid
         if ($LASTEXITCODE -ne 0) { throw "go build ganoid failed" }
         Write-Host "  OK  $OutG" -ForegroundColor Green
     }
