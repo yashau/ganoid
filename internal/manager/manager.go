@@ -15,6 +15,7 @@ import (
 
 	"github.com/yashau/ganoid/internal/config"
 	"github.com/yashau/ganoid/internal/event"
+	"github.com/yashau/ganoid/internal/logger"
 	"github.com/yashau/ganoid/internal/platform"
 )
 
@@ -79,71 +80,100 @@ func (m *Manager) SwitchProfile(ctx context.Context, targetID string) <-chan eve
 			return
 		}
 
+		logger.Info("switch started: %q -> %q", currentProfile.Name, targetProfile.Name)
+
 		// Step 1: tailscale logout (best-effort)
 		send(1, "Logging out from current coordination server…")
-		_ = m.runTailscale(ctx, "logout")
+		if err := m.runTailscale(ctx, "logout"); err != nil {
+			logger.Debug("step 1: tailscale logout: %v (ignored)", err)
+		} else {
+			logger.Debug("step 1: tailscale logout: ok")
+		}
 
 		// Step 2: Stop Tailscale daemon
 		send(2, "Stopping Tailscale daemon…")
+		logger.Debug("step 2: stopping Tailscale service")
 		if err := m.plat.StopService(); err != nil {
+			logger.Error("step 2: stop service failed: %v", err)
 			fail(2, fmt.Errorf("stop service: %w", err))
 			return
 		}
+		logger.Debug("step 2: Tailscale service stopped")
 
 		// Step 3: Back up current state dir
 		send(3, fmt.Sprintf("Backing up state for profile %q…", currentProfile.Name))
 		backupDest := m.plat.ProfileStateDirPath(currentProfile.ID)
+		logger.Debug("step 3: backing up %s -> %s", m.plat.StateDirPath(), backupDest)
 		if err := copyDir(m.plat.StateDirPath(), backupDest); err != nil {
+			logger.Error("step 3: backup state failed: %v", err)
 			fail(3, fmt.Errorf("backup state: %w", err))
 			return
 		}
+		logger.Debug("step 3: backup ok")
 
 		// Step 4: Clear active state dir
 		send(4, "Clearing active Tailscale state…")
+		logger.Debug("step 4: clearing %s", m.plat.StateDirPath())
 		if err := clearDir(m.plat.StateDirPath()); err != nil {
+			logger.Error("step 4: clear state failed: %v", err)
 			fail(4, fmt.Errorf("clear state: %w", err))
 			return
 		}
+		logger.Debug("step 4: clear ok")
 
 		// Step 5: Restore target profile state (if exists)
 		send(5, fmt.Sprintf("Restoring state for profile %q…", targetProfile.Name))
 		src := m.plat.ProfileStateDirPath(targetID)
 		if _, err := os.Stat(src); err == nil {
+			logger.Debug("step 5: restoring %s -> %s", src, m.plat.StateDirPath())
 			if err := copyDir(src, m.plat.StateDirPath()); err != nil {
+				logger.Error("step 5: restore state failed: %v", err)
 				fail(5, fmt.Errorf("restore state: %w", err))
 				return
 			}
+			logger.Debug("step 5: restore ok")
 		} else {
+			logger.Debug("step 5: no saved state for %q, starting fresh", targetProfile.Name)
 			send(5, "No saved state for target profile — starting fresh")
 		}
 
 		// Step 6: Write login server
 		send(6, "Configuring login server…")
+		logger.Debug("step 6: setting login server to %q", targetProfile.LoginServer)
 		if targetProfile.LoginServer == "" {
 			if err := m.plat.ClearLoginServer(); err != nil {
+				logger.Error("step 6: clear login server failed: %v", err)
 				fail(6, fmt.Errorf("clear login server: %w", err))
 				return
 			}
 		} else {
 			if err := m.plat.SetLoginServer(targetProfile.LoginServer); err != nil {
+				logger.Error("step 6: set login server failed: %v", err)
 				fail(6, fmt.Errorf("set login server: %w", err))
 				return
 			}
 		}
+		logger.Debug("step 6: login server configured")
 
 		// Step 7: Start Tailscale daemon
 		send(7, "Starting Tailscale daemon…")
+		logger.Debug("step 7: starting Tailscale service")
 		if err := m.plat.StartService(); err != nil {
+			logger.Error("step 7: start service failed: %v", err)
 			fail(7, fmt.Errorf("start service: %w", err))
 			return
 		}
+		logger.Debug("step 7: Tailscale service started")
 
 		// Step 8: Update active profile in config
 		send(8, "Updating active profile…")
+		logger.Debug("step 8: setting active profile to %q", targetID)
 		if err := m.cfg.SetActiveProfile(targetID); err != nil {
+			logger.Error("step 8: update active profile failed: %v", err)
 			fail(8, fmt.Errorf("update active profile: %w", err))
 			return
 		}
+		logger.Info("switch complete: active profile is now %q", targetProfile.Name)
 
 		ch <- event.SwitchEvent{Step: total, Total: total, Message: "Switch complete", Done: true}
 
