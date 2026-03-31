@@ -49,16 +49,18 @@ The installer will:
 
 ### System tray
 
-`ganoid` sits in the system tray and shows the current connection state. Right-clicking the icon gives you:
+`ganoid` sits in the system tray and shows the current connection state. The context menu is built live on every right-click directly from the API, so it always reflects the current state.
 
-- **Status** — current Tailscale backend state and active profile name
-- **Switch Profile** — submenu listing all configured profiles; click one to switch immediately
+- **Status** — current Tailscale backend state and active profile name (always at top, greyed out)
+- **Profiles** — list of configured profiles; the active one is checkmarked and greyed out, click any other to switch immediately
 - **Open Dashboard** — opens the web UI in your browser
 - **Quit** — exits the tray app (ganoidd keeps running as a service)
 
+Double-clicking the tray icon also opens the dashboard.
+
 ### Web UI
 
-Open the dashboard via the tray icon. It includes:
+Open the dashboard via the tray icon or by double-clicking it. It includes:
 
 - **Dashboard** — active profile, Tailscale backend state, peer count, and one-click profile switching with live progress streamed in real time
 - **Profiles** — add, edit, and delete profiles
@@ -95,7 +97,7 @@ Ganoid config and profile state backups are left intact.
 
 ## Building from source
 
-**Prerequisites:** Go 1.26+, pnpm, goversioninfo
+**Prerequisites:** Go 1.26+, Node.js, pnpm, goversioninfo
 
 ```powershell
 # Windows
