@@ -51,6 +51,7 @@ func startServer(port int) (shutdown func(), err error) {
 
 	// Reconcile: if Tailscale's actual ControlURL doesn't match the profile
 	// Ganoid thinks is active, find or create the matching profile.
+	// Also sync the registry LoginServer key to match actual state.
 	if actualURL, err := mgr.ActualControlURL(context.Background()); err == nil {
 		activeProfile, _ := cfg.ActiveProfile()
 		if activeProfile.LoginServer != actualURL {
@@ -81,6 +82,13 @@ func startServer(port int) (shutdown func(), err error) {
 					_ = cfg.SetActiveProfile(id)
 				}
 			}
+		}
+		// Keep registry in sync with actual ControlURL so Tailscale uses the
+		// right server if state is ever cleared and it falls back to registry.
+		if actualURL == "" {
+			_ = plat.ClearLoginServer()
+		} else {
+			_ = plat.SetLoginServer(actualURL)
 		}
 	}
 

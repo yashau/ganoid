@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -79,66 +80,101 @@ func (m *Manager) SwitchProfile(ctx context.Context, targetID string) <-chan eve
 			return
 		}
 
-		// Step 1: tailscale logout (best-effort)
-		send(1, "Logging out from current coordination server…")
-		_ = m.runTailscale(ctx, "logout")
-
-		// Step 2: Stop Tailscale daemon
-		send(2, "Stopping Tailscale daemon…")
+		// Step 1: Stop Tailscale daemon first so state files are stable for backup
+		send(1, "Stopping Tailscale daemon…")
 		if err := m.plat.StopService(); err != nil {
-			fail(2, fmt.Errorf("stop service: %w", err))
+			fail(1, fmt.Errorf("stop service: %w", err))
 			return
 		}
 
-		// Step 3: Back up current state dir
-		send(3, fmt.Sprintf("Backing up state for profile %q…", currentProfile.Name))
+		// Step 2: Back up current state dir (before any changes, while state is clean)
+		send(2, fmt.Sprintf("Backing up state for profile %q…", currentProfile.Name))
 		backupDest := m.plat.ProfileStateDirPath(currentProfile.ID)
+		if err := verifyState(m.plat.StateDirPath()); err != nil {
+			fail(2, fmt.Errorf("live state is invalid, refusing to overwrite backup: %w", err))
+			return
+		}
+		// Confirm the live state's ControlURL actually matches the current profile,
+		// not the target — guards against backing up the wrong state.
+		liveURL, err := stateControlURL(m.plat.StateDirPath())
+		if err != nil {
+			fail(2, fmt.Errorf("read live ControlURL: %w", err))
+			return
+		}
+		expectedURL := currentProfile.LoginServer
+		if expectedURL == "" {
+			expectedURL = "https://controlplane.tailscale.com"
+		}
+		if liveURL != expectedURL {
+			fail(2, fmt.Errorf("live state ControlURL %q does not match current profile %q (%q) — aborting to avoid corrupting backup", liveURL, currentProfile.Name, expectedURL))
+			return
+		}
+		rotateBackup(backupDest, 3)
 		if err := copyDir(m.plat.StateDirPath(), backupDest); err != nil {
-			fail(3, fmt.Errorf("backup state: %w", err))
+			fail(2, fmt.Errorf("backup state: %w", err))
 			return
 		}
 
-		// Step 4: Clear active state dir
-		send(4, "Clearing active Tailscale state…")
+		// Step 3: Clear active state dir
+		send(3, "Clearing active Tailscale state…")
 		if err := clearDir(m.plat.StateDirPath()); err != nil {
-			fail(4, fmt.Errorf("clear state: %w", err))
+			fail(3, fmt.Errorf("clear state: %w", err))
 			return
 		}
 
-		// Step 5: Restore target profile state (if exists)
-		send(5, fmt.Sprintf("Restoring state for profile %q…", targetProfile.Name))
+		// Step 4: Restore target profile state (if exists), trying versions if needed
+		send(4, fmt.Sprintf("Restoring state for profile %q…", targetProfile.Name))
 		src := m.plat.ProfileStateDirPath(targetID)
-		if _, err := os.Stat(src); err == nil {
-			if err := copyDir(src, m.plat.StateDirPath()); err != nil {
-				fail(5, fmt.Errorf("restore state: %w", err))
+		wantURL := targetProfile.LoginServer
+		if wantURL == "" {
+			wantURL = "https://controlplane.tailscale.com"
+		}
+		restored := false
+		for _, candidate := range stateVersions(src, 3) {
+			if _, err := os.Stat(candidate); err != nil {
+				continue
+			}
+			if err := verifyState(candidate); err != nil {
+				continue
+			}
+			candidateURL, err := stateControlURL(candidate)
+			if err != nil || candidateURL != wantURL {
+				continue // ControlURL mismatch — skip
+			}
+			if err := copyDir(candidate, m.plat.StateDirPath()); err != nil {
+				fail(4, fmt.Errorf("restore state: %w", err))
 				return
 			}
-		} else {
-			send(5, "No saved state for target profile — starting fresh")
+			restored = true
+			break
+		}
+		if !restored {
+			send(4, "No valid saved state for target profile — starting fresh")
 		}
 
-		// Step 6: Write login server
-		send(6, "Configuring login server…")
+		// Step 5: Write login server to registry
+		send(5, "Configuring login server…")
 		if targetProfile.LoginServer == "" {
 			if err := m.plat.ClearLoginServer(); err != nil {
-				fail(6, fmt.Errorf("clear login server: %w", err))
+				fail(5, fmt.Errorf("clear login server: %w", err))
 				return
 			}
 		} else {
 			if err := m.plat.SetLoginServer(targetProfile.LoginServer); err != nil {
-				fail(6, fmt.Errorf("set login server: %w", err))
+				fail(5, fmt.Errorf("set login server: %w", err))
 				return
 			}
 		}
 
-		// Step 7: Start Tailscale daemon
-		send(7, "Starting Tailscale daemon…")
+		// Step 6: Start Tailscale daemon
+		send(6, "Starting Tailscale daemon…")
 		if err := m.plat.StartService(); err != nil {
-			fail(7, fmt.Errorf("start service: %w", err))
+			fail(6, fmt.Errorf("start service: %w", err))
 			return
 		}
 
-		// Step 8: Update active profile in config
+		// Steps 7-8: placeholder sends to keep total=8 progress consistent
+		send(7, "Finalizing…")
 		send(8, "Updating active profile…")
 		if err := m.cfg.SetActiveProfile(targetID); err != nil {
 			fail(8, fmt.Errorf("update active profile: %w", err))
@@ -273,6 +309,86 @@ func BackendState(s *TailscaleStatus) string {
 		return "Unknown"
 	}
 	return s.BackendState
+}
+
+// stateControlURL reads the ControlURL from the active profile in a Tailscale state directory.
+func stateControlURL(dir string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(dir, "server-state.conf"))
+	if err != nil {
+		return "", fmt.Errorf("read server-state.conf: %w", err)
+	}
+	var state map[string]json.RawMessage
+	if err := json.Unmarshal(data, &state); err != nil {
+		return "", fmt.Errorf("invalid JSON: %w", err)
+	}
+	// Each profile-XXXX value is a base64-encoded JSON prefs object.
+	for k, v := range state {
+		if len(k) <= 8 || k[:8] != "profile-" || string(v) == "null" {
+			continue
+		}
+		decoded, err := decodeBase64JSON(v)
+		if err != nil {
+			continue
+		}
+		var prefs struct {
+			ControlURL string `json:"ControlURL"`
+		}
+		if err := json.Unmarshal(decoded, &prefs); err != nil {
+			continue
+		}
+		return prefs.ControlURL, nil
+	}
+	return "", fmt.Errorf("no profile found in state")
+}
+
+func decodeBase64JSON(raw json.RawMessage) ([]byte, error) {
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return nil, err
+	}
+	b, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		b, err = base64.RawStdEncoding.DecodeString(s)
+	}
+	return b, err
+}
+
+// verifyState checks that a Tailscale state directory has valid, non-empty profile data.
+func verifyState(dir string) error {
+	data, err := os.ReadFile(filepath.Join(dir, "server-state.conf"))
+	if err != nil {
+		return fmt.Errorf("read server-state.conf: %w", err)
+	}
+	var state map[string]json.RawMessage
+	if err := json.Unmarshal(data, &state); err != nil {
+		return fmt.Errorf("invalid JSON: %w", err)
+	}
+	for k, v := range state {
+		if len(k) > 8 && k[:8] == "profile-" && string(v) != "null" {
+			return nil
+		}
+	}
+	return fmt.Errorf("no valid profile data found")
+}
+
+// stateVersions returns the base path followed by up to n rotated versions.
+func stateVersions(base string, n int) []string {
+	paths := make([]string, 0, n+1)
+	paths = append(paths, base)
+	for i := 1; i <= n; i++ {
+		paths = append(paths, fmt.Sprintf("%s.v%d", base, i))
+	}
+	return paths
+}
+
+// rotateBackup shifts existing versioned backups down and removes the oldest.
+// base.v(n) is dropped, base.v(n-1) → base.v(n), …, base → base.v1.
+func rotateBackup(base string, n int) {
+	os.RemoveAll(fmt.Sprintf("%s.v%d", base, n))
+	for i := n - 1; i >= 1; i-- {
+		os.Rename(fmt.Sprintf("%s.v%d", base, i), fmt.Sprintf("%s.v%d", base, i+1))
+	}
+	os.Rename(base, fmt.Sprintf("%s.v1", base))
 }
 
 // stub to suppress unused import warning during development
