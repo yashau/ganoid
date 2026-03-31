@@ -176,7 +176,9 @@ Write-OK "Service started"
 Write-Step "Launching ganoid tray"
 # Give the service a moment to write daemon.json before ganoid tries to read it.
 Start-Sleep -Seconds 2
-Start-Process -FilePath "$InstallDir\ganoid.exe" -WindowStyle Hidden
+# Launch via explorer.exe so ganoid inherits the interactive user token,
+# not the elevated Administrator token from this installer.
+Start-Process explorer.exe -ArgumentList "`"$InstallDir\ganoid.exe`""
 Write-OK "ganoid launched"
 
 # ── Done ───────────────────────────────────────────────────────────────────────
