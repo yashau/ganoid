@@ -24,3 +24,4 @@ ui/node_modules/
 .idea/
 .vscode/
 *.swp
+.claude/
