@@ -62,7 +62,7 @@ Open the dashboard via the tray icon. It includes:
 
 - **Dashboard** — active profile, Tailscale backend state, peer count, and one-click profile switching with live progress streamed in real time
 - **Profiles** — add, edit, and delete profiles
-- **Settings** — configure the listening port and other options
+- **Settings** — configure the listening port
 
 ## How it works
 
@@ -91,7 +91,7 @@ After switching to a profile for the first time, Tailscale will be in the `Needs
 irm https://raw.githubusercontent.com/yashau/ganoid/main/uninstall.ps1 | iex
 ```
 
-Configuration data in `%APPDATA%\ganoid` is left intact.
+Ganoid config and profile state backups are left intact.
 
 ## Building from source
 
