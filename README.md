@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/yashau/ganoid/releases/latest"><img src="https://img.shields.io/github/v/release/yashau/ganoid?style=flat-square" alt="Latest Release" /></a>
-<img src="https://img.shields.io/badge/platform-Windows-blue?style=flat-square" alt="Platform: Windows" />
+  <img src="https://img.shields.io/badge/platform-Windows-blue?style=flat-square" alt="Platform: Windows" />
   <img src="https://img.shields.io/badge/go-1.26+-00ADD8?style=flat-square&logo=go" alt="Go Version" />
 </p>
 
@@ -25,13 +25,13 @@ Ganoid is a two-component tool for managing multiple Tailscale profiles — each
 | Component | Description |
 |-----------|-------------|
 | `ganoidd` | Privileged daemon. Runs as a Windows service. Manages Tailscale state, serves the web UI and REST API. |
-| `ganoid` | System tray client. Monitors `ganoidd`, shows connection status, lets you switch profiles from the tray. |
+| `ganoid` | System tray client. Monitors `ganoidd`, shows connection status, and lets you switch profiles directly from the tray or the web UI. |
 
 The two components communicate over a local HTTP API authenticated with a per-session bearer token. `ganoid` self-recovers if `ganoidd` restarts — whichever starts first is fine.
 
 ## Installation
 
-Run the following in an elevated PowerShell prompt:
+Run the following in PowerShell (elevation is handled automatically):
 
 ```powershell
 irm https://raw.githubusercontent.com/yashau/ganoid/main/install.ps1 | iex
@@ -45,11 +45,30 @@ The installer will:
 4. Create Start Menu shortcuts
 5. Start everything immediately
 
+## Usage
+
+### System tray
+
+`ganoid` sits in the system tray and shows the current connection state. Right-clicking the icon gives you:
+
+- **Status** — current Tailscale backend state and active profile name
+- **Switch Profile** — submenu listing all configured profiles; click one to switch immediately
+- **Open Dashboard** — opens the web UI in your browser
+- **Quit** — exits the tray app (ganoidd keeps running as a service)
+
+### Web UI
+
+Open the dashboard via the tray icon. It includes:
+
+- **Dashboard** — active profile, Tailscale backend state, peer count, and one-click profile switching with live progress streamed in real time
+- **Profiles** — add, edit, and delete profiles
+- **Settings** — configure the listening port and other options
+
 ## How it works
 
 ### Profile switching
 
-Each Tailscale **profile** in Ganoid maps a friendly name to a coordination server URL. Switching profiles runs an 8-step sequence:
+Each profile maps a friendly name to a coordination server URL. Switching runs an 8-step sequence:
 
 1. `tailscale logout` from the current server (best-effort)
 2. Stop the Tailscale service
@@ -60,19 +79,11 @@ Each Tailscale **profile** in Ganoid maps a friendly name to a coordination serv
 7. Start the Tailscale service
 8. Update the active profile in Ganoid's config
 
-Progress is streamed live in the web UI via SSE.
+Switch progress is streamed live in the web UI. The tray also triggers a switch directly — no need to open the browser.
 
 ### First login
 
-After switching to a new profile for the first time, Tailscale will be in the `NeedsLogin` state. Open the Ganoid dashboard and follow the Tailscale login link to authenticate with the new coordination server.
-
-## Web UI
-
-The dashboard is served by `ganoidd` and opens automatically in your browser when `ganoid` starts. It includes:
-
-- **Dashboard** — active profile, Tailscale backend state, peer count, one-click profile switching with live progress. Open it from the system tray icon.
-- **Profiles** — add, edit, and delete profiles
-- **Settings** — configure the port and other options
+After switching to a profile for the first time, Tailscale will be in the `NeedsLogin` state. Open the dashboard and follow the Tailscale login link to authenticate with the new coordination server.
 
 ## Uninstall
 
