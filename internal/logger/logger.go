@@ -79,7 +79,7 @@ func Init(path string, lvl Level) error {
 	}
 	logFile = f
 	current = lvl
-	lg = log.New(io.MultiWriter(os.Stdout, f), "", log.Ldate|log.Ltime|log.Lmicroseconds)
+	lg = log.New(io.MultiWriter(f, os.Stdout), "", log.Ldate|log.Ltime|log.Lmicroseconds)
 	return nil
 }
 
