@@ -10,16 +10,26 @@ import (
 	"github.com/yashau/ganoid/internal/event"
 )
 
-// Run starts the systray. It blocks until the tray quits.
-// rebuildCh receives a signal whenever the client holder changes.
+// Run starts the systray in a loop, restarting whenever rebuildCh fires.
+// Blocks until the user clicks Quit.
 func Run(h *client.Holder, rebuildCh <-chan struct{}) {
-	systray.Run(
-		func() { onReady(h, rebuildCh) },
-		func() {},
-	)
+	for {
+		userQuit := make(chan struct{})
+		systray.Run(
+			func() { onReady(h, rebuildCh, userQuit) },
+			func() {},
+		)
+		// If the user clicked Quit, userQuit is closed — stop the loop.
+		select {
+		case <-userQuit:
+			return
+		default:
+			// Rebuild triggered — restart the tray.
+		}
+	}
 }
 
-func onReady(h *client.Holder, rebuildCh <-chan struct{}) {
+func onReady(h *client.Holder, rebuildCh <-chan struct{}, userQuit chan struct{}) {
 	systray.SetIcon(Icon())
 	systray.SetTitle("Ganoid")
 	systray.SetTooltip("Ganoid — Tailscale profile manager")
@@ -28,12 +38,7 @@ func onReady(h *client.Holder, rebuildCh <-chan struct{}) {
 	statusItem.Disable()
 
 	systray.AddSeparator()
-
-	// Build submenu if ganoidd is already up.
-	if c := h.Get(); c != nil {
-		buildSubmenu(h)
-	}
-
+	buildSubmenu(h)
 	systray.AddSeparator()
 
 	openItem := systray.AddMenuItem("Open Dashboard", "Open the Ganoid web UI")
@@ -67,17 +72,11 @@ func onReady(h *client.Holder, rebuildCh <-chan struct{}) {
 		}
 	}()
 
-	// rebuildCh fires when ganoidd connects/disconnects or profiles change.
-	// Since systray doesn't support removing items, we update the status label
-	// as a lightweight signal. A full menu rebuild requires restarting the tray.
+	// Rebuild tray when profiles change.
 	go func() {
 		for range rebuildCh {
-			c := h.Get()
-			if c == nil {
-				statusItem.SetTitle("Status: ganoidd not running")
-			} else {
-				statusItem.SetTitle("Status: reconnected — restart tray to refresh menu")
-			}
+			systray.Quit()
+			return
 		}
 	}()
 
@@ -90,6 +89,7 @@ func onReady(h *client.Holder, rebuildCh <-chan struct{}) {
 			}
 			OpenBrowser(c.DashboardURL())
 		case <-quitItem.ClickedCh:
+			close(userQuit)
 			systray.Quit()
 			return
 		}
@@ -137,9 +137,6 @@ func buildSubmenu(h *client.Holder) {
 				)
 				<-done
 				cancel()
-				if c := h.Get(); c != nil {
-					OpenBrowser(c.DashboardURL())
-				}
 			}
 		}()
 	}
