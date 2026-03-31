@@ -29,6 +29,18 @@ Ganoid is a two-component tool for managing multiple Tailscale profiles — each
 
 The two components communicate over a local HTTP API authenticated with a per-session bearer token. `ganoid` self-recovers if `ganoidd` restarts.
 
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/dashboard.png" alt="Ganoid Dashboard" width="700" />
+  <br /><em>Dashboard — active profile, Tailscale state, peer count, one-click switching</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/tray.png" alt="Ganoid System Tray" width="280" />
+  <br /><em>System tray — live status and profile switcher</em>
+</p>
+
 ## Installation
 
 Run the following in PowerShell (elevation is handled automatically):
