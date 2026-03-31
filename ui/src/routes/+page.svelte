@@ -14,6 +14,22 @@
 	let switchLog = $state<SwitchEvent[]>([]);
 	let cancelSwitch: (() => void) | null = null;
 	let interval: ReturnType<typeof setInterval>;
+	let fastPollInterval: ReturnType<typeof setInterval> | null = null;
+
+	function startFastPoll() {
+		if (fastPollInterval) clearInterval(fastPollInterval);
+		fastPollInterval = setInterval(async () => {
+			await load();
+			if (status && status.tailscale.backend_state !== 'NoState') {
+				clearInterval(fastPollInterval!);
+				fastPollInterval = null;
+			}
+		}, 2000);
+		// Stop fast-polling after 30 seconds regardless.
+		setTimeout(() => {
+			if (fastPollInterval) { clearInterval(fastPollInterval); fastPollInterval = null; }
+		}, 30000);
+	}
 
 	async function load() {
 		try {
@@ -34,7 +50,7 @@
 		cancelSwitch = api.switchProfile(
 			id,
 			(ev) => { switchLog = [...switchLog, ev]; },
-			() => { switching = ''; cancelSwitch = null; load(); },
+			() => { switching = ''; cancelSwitch = null; load(); startFastPoll(); },
 			(msg) => { switching = ''; cancelSwitch = null; error = msg; }
 		);
 	}
@@ -46,7 +62,7 @@
 	}
 
 	onMount(() => { load(); interval = setInterval(load, 15000); });
-	onDestroy(() => { clearInterval(interval); cancelSwitch?.(); });
+	onDestroy(() => { clearInterval(interval); if (fastPollInterval) clearInterval(fastPollInterval); cancelSwitch?.(); });
 </script>
 
 <div class="space-y-6">
