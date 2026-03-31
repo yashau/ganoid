@@ -174,6 +174,8 @@ Write-OK "Service started"
 
 # ── Launch ganoid tray ─────────────────────────────────────────────────────────
 Write-Step "Launching ganoid tray"
+# Give the service a moment to write daemon.json before ganoid tries to read it.
+Start-Sleep -Seconds 2
 Start-Process -FilePath "$InstallDir\ganoid.exe" -WindowStyle Hidden
 Write-OK "ganoid launched"
 

@@ -82,7 +82,13 @@ try {
             ManifestPath = ""
         }
         $Json = ($Info | ConvertTo-Json -Depth 10) -replace "`r`n", "`n"
-        $JsonPath = Join-Path $CmdDir "versioninfo.json"
+        $JsonPath  = Join-Path $CmdDir "versioninfo.json"
+        $SysoPath  = Join-Path $CmdDir "resource.syso"
+
+        # Remove stale files before regenerating.
+        if (Test-Path $JsonPath) { Remove-Item $JsonPath -Force }
+        if (Test-Path $SysoPath) { Remove-Item $SysoPath -Force }
+
         [System.IO.File]::WriteAllText($JsonPath, $Json, $Utf8NoBom)
 
         Push-Location $CmdDir
