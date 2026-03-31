@@ -21,7 +21,7 @@ import (
 
 // ui/dist is the SvelteKit build output, placed here by the Makefile.
 //
-//go:embed ui/dist
+//go:embed all:ui/dist
 var uiFiles embed.FS
 
 // Set via -ldflags at build time.
