@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -158,6 +159,11 @@ func (m *Manager) TailscaleStatus(ctx context.Context) (*TailscaleStatus, error)
 	cmd := exec.CommandContext(ctx, m.plat.TailscaleBinaryPath(), "status", "--json")
 	out, err := cmd.Output()
 	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			// Binary not found — Tailscale is not installed.
+			return &TailscaleStatus{BackendState: "Not installed"}, nil
+		}
 		return nil, fmt.Errorf("tailscale status: %w", err)
 	}
 	var s TailscaleStatus
