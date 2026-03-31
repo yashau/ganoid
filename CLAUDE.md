@@ -236,9 +236,8 @@ Static files served under the path prefix (from embedded `ui/dist`). Unknown pat
 
 Windows-specific paths:
 - Tailscale state: `%ProgramData%\Tailscale`
-- Profile backups: `%APPDATA%\ganoid\states\{profileID}` (and `.v1`, `.v2`, `.v3`)
-- Ganoid config/logs: `%ProgramData%\Ganoid`
-- daemon.json: `%ProgramData%\Ganoid\daemon.json`
+- Profile backups: `%APPDATA%\ganoid\states\{profileID}` (and `.v1`, `.v2`, `.v3`) — note: this stays in LocalSystem's APPDATA since it's internal state managed by the service
+- Ganoid config/logs/daemon: `%ProgramData%\Ganoid` (profiles.json, ganoidd.log, daemon.json all here)
 - Registry: `HKLM\SOFTWARE\Tailscale IPN\LoginServer`
 - Tailscale binary: `%ProgramFiles%\Tailscale\tailscale.exe`
 
