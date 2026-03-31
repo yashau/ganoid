@@ -6,7 +6,26 @@
     irm https://raw.githubusercontent.com/yashau/ganoid/main/install.ps1 | iex
 #>
 
-param([switch]$AdminTasks)
+# ── Elevation ─────────────────────────────────────────────────────────────────
+function Test-Elevated {
+    [bool]([Security.Principal.WindowsIdentity]::GetCurrent().Groups -match 'S-1-5-32-544')
+}
+
+if (-not (Test-Elevated)) {
+    Write-Host "Ganoid installer requires administrator privileges." -ForegroundColor Yellow
+    Write-Host "Re-launching with elevation..." -ForegroundColor Yellow
+
+    $rand = [System.IO.Path]::GetRandomFileName().Replace('.', '')
+    $tmp  = "$env:TEMP\ganoid_install_$rand.ps1"
+    Set-Content -Path $tmp -Value $MyInvocation.MyCommand.ScriptBlock -Encoding UTF8
+
+    Start-Process powershell -Verb RunAs `
+        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$tmp`""
+    exit
+}
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
 # ── Config ────────────────────────────────────────────────────────────────────
 $Repo               = 'yashau/ganoid'
@@ -17,47 +36,6 @@ $ServiceDesc        = 'Tailscale profile coordination daemon for Ganoid'
 
 function Write-Step([string]$Msg) { Write-Host "`n==> $Msg" -ForegroundColor Cyan }
 function Write-OK([string]$Msg)   { Write-Host "    OK  $Msg" -ForegroundColor Green }
-
-# ── Non-elevated entry point ──────────────────────────────────────────────────
-# Runs first. Saves the script to a temp file, runs admin tasks elevated
-# (and waits), then launches ganoid in the current (non-elevated) context.
-if (-not $AdminTasks) {
-    $ErrorActionPreference = 'Stop'
-
-    # Save this script to a temp file so it can be re-launched with -AdminTasks.
-    $rand = [System.IO.Path]::GetRandomFileName().Replace('.', '')
-    $tmp  = "$env:TEMP\ganoid_install_$rand.ps1"
-    Set-Content -Path $tmp -Value $MyInvocation.MyCommand.ScriptBlock -Encoding UTF8
-
-    Write-Step "Running admin tasks (UAC prompt may appear)"
-    $proc = Start-Process powershell -Verb RunAs -PassThru -Wait `
-        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$tmp`" -AdminTasks"
-
-    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
-
-    if ($proc.ExitCode -ne 0) {
-        Write-Host "`n  Installation failed (exit code $($proc.ExitCode))." -ForegroundColor Red
-        exit $proc.ExitCode
-    }
-
-    # Give the service a moment to write daemon.json.
-    Start-Sleep -Seconds 2
-
-    Write-Step "Launching ganoid tray"
-    Start-Process -FilePath "$InstallDir\ganoid.exe" -WindowStyle Hidden
-    Write-OK "ganoid launched"
-
-    Write-Host ""
-    Write-Host "  Ganoid installed successfully." -ForegroundColor Green
-    Write-Host "  ganoidd runs as a Windows service (auto-start on boot)."
-    Write-Host "  ganoid    runs in the system tray (auto-start on login)."
-    Write-Host ""
-    exit 0
-}
-
-# ── Admin tasks (elevated) ────────────────────────────────────────────────────
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
 
 # ── Fetch latest release ───────────────────────────────────────────────────────
 Write-Step "Fetching latest release from github.com/$Repo"
@@ -144,11 +122,11 @@ function New-Shortcut([string]$LnkPath, [string]$TargetPath, [string]$Arguments 
 Write-Step "Creating shortcuts"
 $startMenu = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Ganoid"
 if (-not (Test-Path $startMenu)) { New-Item -ItemType Directory -Path $startMenu | Out-Null }
-New-Shortcut "$startMenu\Ganoid.lnk" "$InstallDir\ganoid.exe" '' 'Ganoid — Tailscale profile manager'
+New-Shortcut "$startMenu\Ganoid.lnk" "$InstallDir\ganoid.exe" '' 'Ganoid - Tailscale profile manager'
 Write-OK "Start Menu shortcut created"
 
 $startup = [Environment]::GetFolderPath('Startup')
-New-Shortcut "$startup\Ganoid.lnk" "$InstallDir\ganoid.exe" '' 'Ganoid — Tailscale profile manager'
+New-Shortcut "$startup\Ganoid.lnk" "$InstallDir\ganoid.exe" '' 'Ganoid - Tailscale profile manager'
 Write-OK "Startup shortcut created"
 
 # ── Start service ─────────────────────────────────────────────────────────────
@@ -156,4 +134,14 @@ Write-Step "Starting $ServiceName service"
 Start-Service -Name $ServiceName
 Write-OK "Service started"
 
-exit 0
+# ── Launch ganoid tray (de-elevated via explorer.exe) ─────────────────────────
+Write-Step "Launching ganoid tray"
+Start-Sleep -Seconds 2
+Start-Process explorer.exe -ArgumentList "`"$InstallDir\ganoid.exe`""
+Write-OK "ganoid launched"
+
+Write-Host ""
+Write-Host "  Ganoid $tag installed successfully." -ForegroundColor Green
+Write-Host "  ganoidd runs as a Windows service (auto-start on boot)."
+Write-Host "  ganoid    runs in the system tray (auto-start on login)."
+Write-Host ""
