@@ -16,6 +16,7 @@ import (
 	"github.com/yashau/ganoid/internal/api"
 	"github.com/yashau/ganoid/internal/config"
 	"github.com/yashau/ganoid/internal/daemon"
+	"github.com/yashau/ganoid/internal/logger"
 	"github.com/yashau/ganoid/internal/manager"
 	"github.com/yashau/ganoid/internal/platform"
 )
@@ -103,11 +104,12 @@ func startServer(port int) (shutdown func(), err error) {
 
 	httpServer := &http.Server{Handler: srv.Handler()}
 
+	logger.Info("ganoidd %s (%s, built %s) starting on http://localhost:%d",
+		version, gitCommit, buildTime, port)
+
 	go func() {
-		log.Printf("ganoidd %s (%s, built %s) listening on http://localhost:%d",
-			version, gitCommit, buildTime, port)
 		if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
-			log.Printf("http server error: %v", err)
+			logger.Error("http server error: %v", err)
 		}
 	}()
 
