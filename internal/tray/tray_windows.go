@@ -276,6 +276,12 @@ func showContextMenu(hwnd windows.HWND) {
 	var activeID string
 	gProfileIDs = nil
 
+	type profileEntry struct {
+		id   string
+		name string
+	}
+	var profiles []profileEntry
+
 	if c != nil {
 		reqCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		status, err := c.Status(reqCtx)
@@ -299,26 +305,24 @@ func showContextMenu(hwnd windows.HWND) {
 			activeID = store.ActiveProfileID
 			for _, p := range store.Profiles {
 				gProfileIDs = append(gProfileIDs, p.ID)
-				label := "  " + p.Name
-				flags := uint32(mfString)
-				if p.ID == activeID {
-					label = "\u2713 " + p.Name
-					flags |= mfGrayed | mfChecked
-				}
-				menuID := uint32(idProfileBase + len(gProfileIDs) - 1)
-				appendMenu(hMenu, flags, menuID, label)
+				profiles = append(profiles, profileEntry{p.ID, p.Name})
 			}
 		}
-	} else {
-		appendMenu(hMenu, mfString|mfGrayed, 0, statusLabel)
-		statusLabel = "" // already added
 	}
 
-	if statusLabel != "" {
-		appendMenu(hMenu, mfString|mfGrayed, 0, statusLabel)
+	// Status always at top.
+	appendMenu(hMenu, mfString|mfGrayed, 0, statusLabel)
+	appendMenu(hMenu, mfSeparator, 0, "")
+
+	for i, p := range profiles {
+		flags := uint32(mfString)
+		if p.id == activeID {
+			flags |= mfGrayed | mfChecked
+		}
+		appendMenu(hMenu, flags, uint32(idProfileBase+i), p.name)
 	}
 
-	if len(gProfileIDs) > 0 {
+	if len(profiles) > 0 {
 		appendMenu(hMenu, mfSeparator, 0, "")
 	}
 
