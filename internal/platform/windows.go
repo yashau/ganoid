@@ -39,7 +39,16 @@ func (w *Windows) StopService() error {
 	}
 	defer s.Close()
 
-	status, err := s.Control(svc.Stop)
+	// Check current state before sending stop — if already stopped, nothing to do.
+	status, err := s.Query()
+	if err != nil {
+		return fmt.Errorf("query service status: %w", err)
+	}
+	if status.State == svc.Stopped {
+		return nil
+	}
+
+	status, err = s.Control(svc.Stop)
 	if err != nil {
 		return fmt.Errorf("send stop control: %w", err)
 	}
