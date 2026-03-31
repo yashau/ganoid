@@ -41,32 +41,12 @@ func New(cfg *config.Config, mgr *manager.Manager, uiFS http.FileSystem, version
 		r.Get("/tailscale/status", s.handleTailscaleStatus)
 	})
 
-	// Serve embedded UI for all other routes.
-	// Unknown paths fall back to index.html so SvelteKit's client-side router
-	// handles them (direct navigation to /profiles, page refresh, etc.).
+	// Serve embedded UI for all other routes (chi fileserver pattern)
 	if uiFS != nil {
 		s.router.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 			rctx := chi.RouteContext(r.Context())
 			pathPrefix := strings.TrimSuffix(rctx.RoutePattern(), "/*")
-			filePath := strings.TrimPrefix(r.URL.Path, pathPrefix)
-			if filePath == "" {
-				filePath = "/"
-			}
-			// Serve a real file if it exists and is not a directory.
-			// Everything else (unknown routes, root, directories) gets index.html
-			// so SvelteKit's client-side router handles navigation.
-			f, err := uiFS.Open(filePath)
-			if err == nil {
-				info, statErr := f.Stat()
-				f.Close()
-				if statErr == nil && !info.IsDir() {
-					http.StripPrefix(pathPrefix, http.FileServer(uiFS)).ServeHTTP(w, r)
-					return
-				}
-			}
-			r2 := r.Clone(r.Context())
-			r2.URL.Path = pathPrefix + "/index.html"
-			http.StripPrefix(pathPrefix, http.FileServer(uiFS)).ServeHTTP(w, r2)
+			http.StripPrefix(pathPrefix, http.FileServer(uiFS)).ServeHTTP(w, r)
 		})
 	} else {
 		s.router.Get("/*", func(w http.ResponseWriter, r *http.Request) {
