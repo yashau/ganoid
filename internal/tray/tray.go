@@ -19,17 +19,18 @@ func Run(h *client.Holder, rebuildCh <-chan struct{}) {
 			func() { onReady(h, rebuildCh, userQuit) },
 			func() {},
 		)
-		// If the user clicked Quit, userQuit is closed — stop the loop.
 		select {
 		case <-userQuit:
 			return
 		default:
-			// Rebuild triggered — restart the tray.
+			// rebuild triggered — restart
 		}
 	}
 }
 
 func onReady(h *client.Holder, rebuildCh <-chan struct{}, userQuit chan struct{}) {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	systray.SetIcon(Icon())
 	systray.SetTitle("Ganoid")
 	systray.SetTooltip("Ganoid — Tailscale profile manager")
@@ -38,45 +39,60 @@ func onReady(h *client.Holder, rebuildCh <-chan struct{}, userQuit chan struct{}
 	statusItem.Disable()
 
 	systray.AddSeparator()
-	buildSubmenu(h)
+
+	rebuild := func() {
+		cancel()
+		systray.Quit()
+	}
+	buildSubmenu(h, ctx, rebuild)
+
 	systray.AddSeparator()
 
 	openItem := systray.AddMenuItem("Open Dashboard", "Open the Ganoid web UI")
 	quitItem := systray.AddMenuItem("Quit", "Quit Ganoid")
 
-	// Poll ganoidd for status to update the tray label.
+	// Status poller.
 	go func() {
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
 			c := h.Get()
 			if c == nil {
 				statusItem.SetTitle("Status: ganoidd not running")
-				time.Sleep(5 * time.Second)
-				continue
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			status, err := c.Status(ctx)
-			cancel()
-
-			if err == nil && status != nil {
-				state := status.Tailscale.BackendState
-				if state == "Not installed" {
-					statusItem.SetTitle("Status: Tailscale not installed")
-				} else {
-					statusItem.SetTitle(fmt.Sprintf("Status: %s (%s)", state, status.ActiveProfile.Name))
-				}
 			} else {
-				statusItem.SetTitle("Status: ganoidd unreachable")
+				reqCtx, reqCancel := context.WithTimeout(ctx, 5*time.Second)
+				status, err := c.Status(reqCtx)
+				reqCancel()
+				if err == nil && status != nil {
+					state := status.Tailscale.BackendState
+					if state == "Not installed" {
+						statusItem.SetTitle("Status: Tailscale not installed")
+					} else {
+						statusItem.SetTitle(fmt.Sprintf("Status: %s (%s)", state, status.ActiveProfile.Name))
+					}
+				} else {
+					statusItem.SetTitle("Status: ganoidd unreachable")
+				}
 			}
-			time.Sleep(10 * time.Second)
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(10 * time.Second):
+			}
 		}
 	}()
 
-	// Rebuild tray when profiles change.
+	// Rebuild on profile changes from ganoidd.
 	go func() {
-		for range rebuildCh {
-			systray.Quit()
-			return
+		select {
+		case <-rebuildCh:
+			rebuild()
+		case <-ctx.Done():
 		}
 	}()
 
@@ -89,6 +105,7 @@ func onReady(h *client.Holder, rebuildCh <-chan struct{}, userQuit chan struct{}
 			}
 			OpenBrowser(c.DashboardURL())
 		case <-quitItem.ClickedCh:
+			cancel()
 			close(userQuit)
 			systray.Quit()
 			return
@@ -96,14 +113,14 @@ func onReady(h *client.Holder, rebuildCh <-chan struct{}, userQuit chan struct{}
 	}
 }
 
-func buildSubmenu(h *client.Holder) {
+func buildSubmenu(h *client.Holder, ctx context.Context, rebuild func()) {
 	c := h.Get()
 	if c == nil {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	store, err := c.Profiles(ctx)
+	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	store, err := c.Profiles(reqCtx)
 	cancel()
 	if err != nil || store == nil {
 		return
@@ -119,24 +136,33 @@ func buildSubmenu(h *client.Holder) {
 		item := sub.AddSubMenuItem(label, p.LoginServer)
 		if p.ID == store.ActiveProfileID {
 			item.Disable()
+			continue
 		}
 
 		profileID := p.ID
 		go func() {
-			for range item.ClickedCh {
+			select {
+			case <-item.ClickedCh:
 				c := h.Get()
 				if c == nil {
-					continue
+					return
 				}
-				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+				switchCtx, switchCancel := context.WithTimeout(ctx, 3*time.Minute)
 				done := make(chan struct{})
-				c.SwitchProfile(ctx, profileID,
+				c.SwitchProfile(switchCtx, profileID,
 					func(ev event.SwitchEvent) {},
 					func() { close(done) },
 					func(err error) { close(done) },
 				)
-				<-done
-				cancel()
+				select {
+				case <-done:
+				case <-ctx.Done():
+					switchCancel()
+					return
+				}
+				switchCancel()
+				rebuild()
+			case <-ctx.Done():
 			}
 		}()
 	}
