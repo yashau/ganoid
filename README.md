@@ -93,7 +93,7 @@ Switch progress is streamed live in the web UI. The tray also triggers a switch 
 
 ### First login
 
-After switching to a profile for the first time, Tailscale will be in the `NeedsLogin` state. Open the dashboard and follow the Tailscale login link to authenticate with the new coordination server.
+After switching to a profile for the first time, Tailscale will be in the `NeedsLogin` state. Open the Tailscale app or run `tailscale login` to authenticate with the new coordination server.
 
 ### Debug logging
 
