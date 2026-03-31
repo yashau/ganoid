@@ -25,9 +25,9 @@ Ganoid is a two-component tool for managing multiple Tailscale profiles — each
 | Component | Description |
 |-----------|-------------|
 | `ganoidd` | Privileged daemon. Runs as a Windows service. Manages Tailscale state, serves the web UI and REST API. |
-| `ganoid` | System tray client. Monitors `ganoidd`, shows connection status, and lets you switch profiles directly from the tray or the web UI. |
+| `ganoid`  | System tray client. Monitors `ganoidd`, shows connection status, and lets you switch profiles from the tray or web UI. |
 
-The two components communicate over a local HTTP API authenticated with a per-session bearer token. `ganoid` self-recovers if `ganoidd` restarts — whichever starts first is fine.
+The two components communicate over a local HTTP API authenticated with a per-session bearer token. `ganoid` self-recovers if `ganoidd` restarts.
 
 ## Installation
 
@@ -37,9 +37,15 @@ Run the following in PowerShell (elevation is handled automatically):
 irm https://raw.githubusercontent.com/yashau/ganoid/main/install.ps1 | iex
 ```
 
+To install the latest pre-release instead:
+
+```powershell
+$GanoidPreview = $true; irm https://raw.githubusercontent.com/yashau/ganoid/main/install.ps1 | iex
+```
+
 The installer will:
 
-1. Download the latest `ganoidd.exe` and `ganoid.exe` from GitHub Releases
+1. Download `ganoidd.exe` and `ganoid.exe` from GitHub Releases
 2. Install `ganoidd` as a Windows service (auto-start, LocalSystem)
 3. Add a startup shortcut for `ganoid` to your user login
 4. Create Start Menu shortcuts
@@ -49,22 +55,22 @@ The installer will:
 
 ### System tray
 
-`ganoid` sits in the system tray and shows the current connection state. The context menu is built live on every right-click directly from the API, so it always reflects the current state.
+`ganoid` sits in the system tray. Right-click for the menu — it is rebuilt live on every click from the API.
 
-- **Status** — current Tailscale backend state and active profile name (always at top, greyed out)
-- **Profiles** — list of configured profiles; the active one is checkmarked and greyed out, click any other to switch immediately
+- **Status** — current Tailscale backend state and active profile name (top, greyed out)
+- **Profiles** — configured profiles; active one is checkmarked; click any other to switch immediately
 - **Open Dashboard** — opens the web UI in your browser
-- **Quit** — exits the tray app (ganoidd keeps running as a service)
+- **Quit** — exits the tray app (`ganoidd` keeps running as a service)
 
 Double-clicking the tray icon also opens the dashboard.
 
 ### Web UI
 
-Open the dashboard via the tray icon or by double-clicking it. It includes:
-
-- **Dashboard** — active profile, Tailscale backend state, peer count, and one-click profile switching with live progress streamed in real time
+- **Dashboard** — active profile, Tailscale state, peer count, one-click switching with live progress
 - **Profiles** — add, edit, and delete profiles
 - **Settings** — configure the listening port
+
+Direct navigation and page refresh work on all routes.
 
 ## How it works
 
@@ -72,20 +78,36 @@ Open the dashboard via the tray icon or by double-clicking it. It includes:
 
 Each profile maps a friendly name to a coordination server URL. Switching runs an 8-step sequence:
 
-1. `tailscale logout` from the current server (best-effort)
-2. Stop the Tailscale service
-3. Back up the current Tailscale state directory
-4. Clear the active state directory
-5. Restore the target profile's saved state (if any)
-6. Write the new login server to the registry
-7. Start the Tailscale service
+1. Stop the Tailscale service (so state files are stable)
+2. Back up the current Tailscale state directory (with ControlURL verification)
+3. Clear the active state directory
+4. Restore the target profile's saved state (verified before restoring; falls back through up to 3 versioned backups)
+5. Write the login server URL to the registry
+6. Start the Tailscale service
+7. Finalize
 8. Update the active profile in Ganoid's config
 
-Switch progress is streamed live in the web UI. The tray also triggers a switch directly — no need to open the browser.
+Up to 3 versioned backups are kept per profile (`.v1`, `.v2`, `.v3`), rotated automatically. Before overwriting a backup, the live state's ControlURL is verified to match the current profile. Before restoring, each backup version's ControlURL is checked — corrupted or mismatched versions are skipped.
+
+Switch progress is streamed live in the web UI. The tray also triggers a switch directly.
 
 ### First login
 
 After switching to a profile for the first time, Tailscale will be in the `NeedsLogin` state. Open the dashboard and follow the Tailscale login link to authenticate with the new coordination server.
+
+### Debug logging
+
+Logs are written to `C:\ProgramData\Ganoid\ganoidd.log`. Default log level is `info`. To enable full debug logging:
+
+```cmd
+set-log-level.cmd debug
+```
+
+To revert:
+
+```cmd
+set-log-level.cmd info
+```
 
 ## Uninstall
 
@@ -101,16 +123,10 @@ Ganoid config and profile state backups are left intact.
 
 ```powershell
 # Windows
-.\build.ps1 -Version 0.1.0
+.\build.ps1 -Version 0.2.0
 
 # All platforms
-.\build.ps1 -Version 0.1.0 -Target all
-```
-
-```bash
-# Linux / macOS
-./build.sh 0.1.0
-./build.sh 0.1.0 all
+.\build.ps1 -Version 0.2.0 -Target all
 ```
 
 The build script compiles the SvelteKit UI, generates Windows version resources, and produces `ganoidd.exe` + `ganoid.exe` with version metadata embedded.
