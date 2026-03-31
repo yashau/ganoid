@@ -96,27 +96,31 @@ func (m *Manager) SwitchProfile(ctx context.Context, targetID string) <-chan eve
 		// Step 2: Back up current state dir (before any changes, while state is clean)
 		send(2, fmt.Sprintf("Backing up state for profile %q…", currentProfile.Name))
 		backupDest := m.plat.ProfileStateDirPath(currentProfile.ID)
-		logger.Debug("step 2: verifying live state before backup")
-		if err := verifyState(m.plat.StateDirPath()); err != nil {
-			logger.Error("step 2: live state invalid: %v", err)
-			fail(2, fmt.Errorf("live state is invalid, refusing to overwrite backup: %w", err))
+		// Verify the state file is at least valid JSON before backing up.
+		// A fresh/empty state (e.g. official Tailscale with no profile data) is still
+		// valid to back up — we only reject malformed JSON.
+		logger.Debug("step 2: checking live state file is readable before backup")
+		if err := stateFileReadable(m.plat.StateDirPath()); err != nil {
+			logger.Error("step 2: live state unreadable: %v", err)
+			fail(2, fmt.Errorf("live state unreadable, refusing to overwrite backup: %w", err))
 			return
 		}
+		// If the live state has profile data, confirm its ControlURL matches the
+		// current profile to avoid backing up the wrong state.
 		liveURL, err := stateControlURL(m.plat.StateDirPath())
-		if err != nil {
-			logger.Error("step 2: read live ControlURL: %v", err)
-			fail(2, fmt.Errorf("read live ControlURL: %w", err))
-			return
-		}
-		expectedURL := currentProfile.LoginServer
-		if expectedURL == "" {
-			expectedURL = "https://controlplane.tailscale.com"
-		}
-		logger.Debug("step 2: live ControlURL=%q expected=%q", liveURL, expectedURL)
-		if liveURL != expectedURL {
-			logger.Error("step 2: ControlURL mismatch — live=%q expected=%q, aborting backup", liveURL, expectedURL)
-			fail(2, fmt.Errorf("live state ControlURL %q does not match current profile %q (%q) — aborting to avoid corrupting backup", liveURL, currentProfile.Name, expectedURL))
-			return
+		if err == nil {
+			expectedURL := currentProfile.LoginServer
+			if expectedURL == "" {
+				expectedURL = "https://controlplane.tailscale.com"
+			}
+			logger.Debug("step 2: live ControlURL=%q expected=%q", liveURL, expectedURL)
+			if liveURL != expectedURL {
+				logger.Error("step 2: ControlURL mismatch — live=%q expected=%q, aborting backup", liveURL, expectedURL)
+				fail(2, fmt.Errorf("live state ControlURL %q does not match current profile %q (%q) — aborting to avoid corrupting backup", liveURL, currentProfile.Name, expectedURL))
+				return
+			}
+		} else {
+			logger.Debug("step 2: no profile data in live state (fresh/clean state), proceeding with backup")
 		}
 		rotateBackup(backupDest, 3)
 		logger.Debug("step 2: backing up %s -> %s", m.plat.StateDirPath(), backupDest)
@@ -383,6 +387,20 @@ func decodeBase64JSON(raw json.RawMessage) ([]byte, error) {
 		b, err = base64.RawStdEncoding.DecodeString(s)
 	}
 	return b, err
+}
+
+// stateFileReadable checks that server-state.conf exists and is valid JSON.
+// Used before backup — a fresh empty state is acceptable.
+func stateFileReadable(dir string) error {
+	data, err := os.ReadFile(filepath.Join(dir, "server-state.conf"))
+	if err != nil {
+		return fmt.Errorf("read server-state.conf: %w", err)
+	}
+	var state map[string]json.RawMessage
+	if err := json.Unmarshal(data, &state); err != nil {
+		return fmt.Errorf("invalid JSON: %w", err)
+	}
+	return nil
 }
 
 // verifyState checks that a Tailscale state directory has valid, non-empty profile data.
