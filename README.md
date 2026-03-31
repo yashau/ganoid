@@ -147,6 +147,10 @@ The build script compiles the SvelteKit UI, generates Windows version resources,
 
 Ganoid is developed and tested on Windows only. The codebase includes Linux and macOS stubs that compile but are not functional. If you're interested in bringing Ganoid to other platforms, feel free to fork the repo, implement the platform layer, and submit a PR.
 
+## Name
+
+*Ganoid* refers to the type of scales found on primitive fish like gars and sturgeons — hard, interlocking, and layered. The name is a nod to Tailscale's fish-scale logo, and to the way Ganoid manages multiple overlapping network profiles.
+
 ## License
 
 Copyright (c) 2026 Ibrahim Yashau. All rights reserved.
