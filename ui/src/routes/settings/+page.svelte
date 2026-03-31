@@ -6,7 +6,6 @@
 	import { Separator } from '$lib/components/ui/separator';
 
 	let port = $state(57400);
-	let openOnStart = $state(true);
 	let saved = $state(false);
 
 	function save() {
@@ -29,29 +28,6 @@
 				<Label for="port">HTTP Port</Label>
 				<Input id="port" type="number" min={1024} max={65535} bind:value={port} class="w-32" />
 				<p class="text-xs text-muted-foreground">Restart required to take effect.</p>
-			</div>
-
-			<Separator />
-
-			<div class="flex items-center justify-between">
-				<div class="space-y-0.5">
-					<Label>Open browser on start</Label>
-					<p class="text-xs text-muted-foreground">Automatically open the dashboard when Ganoid launches.</p>
-				</div>
-				<button
-					role="switch"
-					aria-label="Open browser on start"
-					aria-checked={openOnStart}
-					onclick={() => openOnStart = !openOnStart}
-					class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent
-						transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
-						{openOnStart ? 'bg-primary' : 'bg-input'}"
-				>
-					<span
-						class="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform
-							{openOnStart ? 'translate-x-5' : 'translate-x-0'}"
-					></span>
-				</button>
 			</div>
 
 			<Separator />
