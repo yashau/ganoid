@@ -78,6 +78,8 @@ Double-clicking the tray icon also opens the dashboard.
 
 ### Web UI
 
+The web UI is served by `ganoidd` at `http://localhost:57400` by default (configurable in Settings).
+
 - **Dashboard** — active profile, Tailscale state, peer count, one-click switching with live progress
 - **Profiles** — add, edit, and delete profiles
 - **Settings** — configure the listening port
