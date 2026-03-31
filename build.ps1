@@ -38,6 +38,19 @@ Write-Host ""
 Push-Location $PSScriptRoot
 
 try {
+    # ── Build SvelteKit UI ────────────────────────────────────────────────────
+    Write-Host "Building UI..." -ForegroundColor Yellow
+    Push-Location (Join-Path $PSScriptRoot "ui")
+    try {
+        & pnpm install --frozen-lockfile
+        if ($LASTEXITCODE -ne 0) { throw "pnpm install failed" }
+        & pnpm run build
+        if ($LASTEXITCODE -ne 0) { throw "pnpm build failed" }
+    } finally {
+        Pop-Location
+    }
+    Write-Host "  OK  UI built" -ForegroundColor Green
+
     # ── Helper: generate versioninfo.json + resource.syso for one binary ──────
     function New-WinResource([string]$CmdDir, [string]$BinName, [string]$Description, [string]$OrigName) {
         $Utf8NoBom = New-Object System.Text.UTF8Encoding $false

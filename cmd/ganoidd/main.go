@@ -3,16 +3,13 @@ package main
 import (
 	"context"
 	"embed"
-	"flag"
 	"fmt"
 	"io/fs"
 	"log"
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"runtime"
-	"syscall"
 	"time"
 
 	"github.com/yashau/ganoid/internal/api"
@@ -34,18 +31,18 @@ var (
 	gitCommit = "unknown"
 )
 
-func main() {
-	port := flag.Int("port", 57400, "HTTP port for the web UI and API")
-	flag.Parse()
-
+// startServer initialises and starts the HTTP server on the given port.
+// It returns a shutdown function that gracefully stops the server and
+// cleans up daemon.json. The caller is responsible for invoking it.
+func startServer(port int) (shutdown func(), err error) {
 	configDir := configDirPath()
 	if err := os.MkdirAll(configDir, 0755); err != nil {
-		log.Fatalf("create config dir: %v", err)
+		return nil, fmt.Errorf("create config dir: %w", err)
 	}
 
 	cfg, err := config.Load(configDir)
 	if err != nil {
-		log.Fatalf("load config: %v", err)
+		return nil, fmt.Errorf("load config: %w", err)
 	}
 
 	plat := platform.New()
@@ -53,40 +50,40 @@ func main() {
 
 	distFS, err := fs.Sub(uiFiles, "ui/dist")
 	if err != nil {
-		log.Fatalf("embed fs: %v", err)
+		return nil, fmt.Errorf("embed fs: %w", err)
 	}
 
 	srv := api.New(cfg, mgr, http.FS(distFS), version)
 
-	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", *port))
+	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
-		log.Fatalf("listen: %v", err)
+		return nil, fmt.Errorf("listen on port %d: %w", port, err)
 	}
 
-	// Write daemon info so ganoid can find us.
-	if err := daemon.Write(daemon.Info{Port: *port, Token: cfg.AuthToken()}); err != nil {
-		log.Fatalf("write daemon info: %v", err)
+	if err := daemon.Write(daemon.Info{Port: port, Token: cfg.AuthToken()}); err != nil {
+		listener.Close()
+		return nil, fmt.Errorf("write daemon info: %w", err)
 	}
 
 	httpServer := &http.Server{Handler: srv.Handler()}
 
 	go func() {
-		log.Printf("ganoidd %s (%s, built %s) listening on http://localhost:%d", version, gitCommit, buildTime, *port)
+		log.Printf("ganoidd %s (%s, built %s) listening on http://localhost:%d",
+			version, gitCommit, buildTime, port)
 		if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("http server: %v", err)
+			log.Printf("http server error: %v", err)
 		}
 	}()
 
-	// Wait for termination signal then clean up.
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	shutdown = func() {
+		log.Println("ganoidd shutting down…")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = httpServer.Shutdown(ctx)
+		_ = daemon.Remove()
+	}
 
-	log.Println("ganoidd shutting down…")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	_ = httpServer.Shutdown(ctx)
-	_ = daemon.Remove()
+	return shutdown, nil
 }
 
 func configDirPath() string {

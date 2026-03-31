@@ -13,17 +13,9 @@ import (
 	"time"
 
 	"github.com/yashau/ganoid/internal/config"
+	"github.com/yashau/ganoid/internal/event"
 	"github.com/yashau/ganoid/internal/platform"
 )
-
-// SwitchEvent is emitted during the profile switch sequence.
-type SwitchEvent struct {
-	Step    int    `json:"step"`
-	Total   int    `json:"total"`
-	Message string `json:"message"`
-	Error   string `json:"error,omitempty"`
-	Done    bool   `json:"done"`
-}
 
 // TailscaleStatus is the parsed output of `tailscale status --json`.
 type TailscaleStatus struct {
@@ -55,8 +47,8 @@ func (m *Manager) SetOnChange(fn func()) {
 
 // SwitchProfile executes the full 8-step switch sequence.
 // Progress events are sent to the returned channel; the channel is closed when done.
-func (m *Manager) SwitchProfile(ctx context.Context, targetID string) <-chan SwitchEvent {
-	ch := make(chan SwitchEvent, 16)
+func (m *Manager) SwitchProfile(ctx context.Context, targetID string) <-chan event.SwitchEvent {
+	ch := make(chan event.SwitchEvent, 16)
 	go func() {
 		defer close(ch)
 		m.mu.Lock()
@@ -65,10 +57,10 @@ func (m *Manager) SwitchProfile(ctx context.Context, targetID string) <-chan Swi
 		const total = 8
 
 		send := func(step int, msg string) {
-			ch <- SwitchEvent{Step: step, Total: total, Message: msg}
+			ch <- event.SwitchEvent{Step: step, Total: total, Message: msg}
 		}
 		fail := func(step int, err error) {
-			ch <- SwitchEvent{Step: step, Total: total, Error: err.Error(), Done: true}
+			ch <- event.SwitchEvent{Step: step, Total: total, Error: err.Error(), Done: true}
 		}
 
 		currentProfile, ok := m.cfg.ActiveProfile()
@@ -152,7 +144,7 @@ func (m *Manager) SwitchProfile(ctx context.Context, targetID string) <-chan Swi
 			return
 		}
 
-		ch <- SwitchEvent{Step: total, Total: total, Message: "Switch complete", Done: true}
+		ch <- event.SwitchEvent{Step: total, Total: total, Message: "Switch complete", Done: true}
 
 		if m.onChange != nil {
 			m.onChange()

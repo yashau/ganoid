@@ -9,7 +9,7 @@ import (
 
 	"github.com/getlantern/systray"
 	"github.com/yashau/ganoid/internal/client"
-	"github.com/yashau/ganoid/internal/manager"
+	"github.com/yashau/ganoid/internal/event"
 )
 
 // Run starts the systray. It blocks until the tray quits.
@@ -129,7 +129,7 @@ func buildSubmenu(h *client.Holder) {
 				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 				done := make(chan struct{})
 				c.SwitchProfile(ctx, profileID,
-					func(ev manager.SwitchEvent) {},
+					func(ev event.SwitchEvent) {},
 					func() { close(done) },
 					func(err error) { close(done) },
 				)

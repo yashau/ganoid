@@ -39,6 +39,11 @@ echo ""
 
 cd "$SCRIPT_DIR"
 
+# ── Build SvelteKit UI ────────────────────────────────────────────────────────
+echo -e "\033[33mBuilding UI...\033[0m"
+(cd ui && pnpm install --frozen-lockfile && pnpm run build)
+echo -e "  \033[32mOK  UI built\033[0m"
+
 # ── Generate versioninfo.json + resource.syso for one binary ─────────────────
 gen_resource() {
     local CMD_DIR="$1" BIN_NAME="$2" DESCRIPTION="$3" ORIG_NAME="$4"

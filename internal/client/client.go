@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/yashau/ganoid/internal/config"
-	"github.com/yashau/ganoid/internal/manager"
+	"github.com/yashau/ganoid/internal/event"
 )
 
 // Holder is a thread-safe, swappable client reference.
@@ -74,7 +74,7 @@ func (c *Client) Profiles(ctx context.Context) (*config.Store, error) {
 func (c *Client) SwitchProfile(
 	ctx context.Context,
 	profileID string,
-	onEvent func(manager.SwitchEvent),
+	onEvent func(event.SwitchEvent),
 	onDone func(),
 	onError func(error),
 ) context.CancelFunc {
@@ -109,7 +109,7 @@ func (c *Client) SwitchProfile(
 			if !strings.HasPrefix(line, "data: ") {
 				continue
 			}
-			var ev manager.SwitchEvent
+			var ev event.SwitchEvent
 			if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ev); err != nil {
 				continue
 			}
