@@ -4,7 +4,13 @@
 
 .EXAMPLE
     irm https://raw.githubusercontent.com/yashau/ganoid/main/install.ps1 | iex
+
+.EXAMPLE
+    $GanoidPreview = $true; irm https://raw.githubusercontent.com/yashau/ganoid/main/install.ps1 | iex
 #>
+# When re-launched as a file after elevation, -Preview is passed as a parameter.
+# When run via irm | iex, $GanoidPreview variable is checked instead (params can't be passed that way).
+param([switch]$Preview)
 
 # ── Elevation ─────────────────────────────────────────────────────────────────
 function Test-Elevated {
@@ -30,7 +36,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # $GanoidPreview can be set before piping to iex to install the latest pre-release.
-$Preview = (Get-Variable -Name GanoidPreview -ValueOnly -ErrorAction SilentlyContinue) -eq $true
+# $Preview param is used when re-launched as a file after elevation.
+$Preview = $Preview -or ((Get-Variable -Name GanoidPreview -ValueOnly -ErrorAction SilentlyContinue) -eq $true)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 $Repo               = 'yashau/ganoid'
