@@ -31,11 +31,6 @@ type Platform interface {
 	StateDirPath() string
 	ProfileStateDirPath(profileID string) string
 
-	// Login server configuration
-	SetLoginServer(url string) error
-	GetLoginServer() (string, error)
-	ClearLoginServer() error
-
 	// Tailscale CLI
 	TailscaleBinaryPath() string
 }

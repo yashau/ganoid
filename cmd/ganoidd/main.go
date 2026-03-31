@@ -52,20 +52,25 @@ func startServer(port int) (shutdown func(), err error) {
 
 	// Reconcile: if Tailscale's actual ControlURL doesn't match the profile
 	// Ganoid thinks is active, find or create the matching profile.
-	if actualURL, err := mgr.ActualControlURL(context.Background()); err == nil {
+	if actualURL, err := mgr.ActualControlURL(context.Background()); err != nil {
+		logger.Warn("reconcile: could not read actual ControlURL: %v", err)
+	} else {
 		activeProfile, _ := cfg.ActiveProfile()
+		logger.Debug("reconcile: active profile=%q loginServer=%q actualURL=%q",
+			activeProfile.Name, activeProfile.LoginServer, actualURL)
 		if activeProfile.LoginServer != actualURL {
+			logger.Info("reconcile: mismatch — searching for matching profile")
 			store := cfg.GetStore()
 			matched := false
 			for _, p := range store.Profiles {
 				if p.LoginServer == actualURL {
+					logger.Info("reconcile: matched profile %q, setting as active", p.Name)
 					_ = cfg.SetActiveProfile(p.ID)
 					matched = true
 					break
 				}
 			}
 			if !matched && actualURL != "" {
-				// No profile exists for this login server — create one.
 				host := actualURL
 				if u, err := url.Parse(actualURL); err == nil && u.Host != "" {
 					host = u.Host
@@ -78,10 +83,15 @@ func startServer(port int) (shutdown func(), err error) {
 					CreatedAt:   time.Now().UTC(),
 					LastUsed:    time.Now().UTC(),
 				}
+				logger.Info("reconcile: no match found, creating profile %q for %q", host, actualURL)
 				if err := cfg.AddProfile(p); err == nil {
 					_ = cfg.SetActiveProfile(id)
 				}
+			} else if !matched {
+				logger.Debug("reconcile: actualURL is empty and no match — no action")
 			}
+		} else {
+			logger.Debug("reconcile: active profile matches actual ControlURL, no action needed")
 		}
 	}
 

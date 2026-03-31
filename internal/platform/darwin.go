@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 )
 
 const tailscalePlistDomain = "/Library/Preferences/io.tailscale.ipn.macos"
@@ -44,31 +43,6 @@ func (d *Darwin) StateDirPath() string {
 func (d *Darwin) ProfileStateDirPath(profileID string) string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "ganoid", "states", profileID)
-}
-
-func (d *Darwin) SetLoginServer(url string) error {
-	cmd := exec.Command("defaults", "write", tailscalePlistDomain, "LoginServer", "-string", url)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("defaults write LoginServer: %w\n%s", err, out)
-	}
-	return nil
-}
-
-func (d *Darwin) GetLoginServer() (string, error) {
-	cmd := exec.Command("defaults", "read", tailscalePlistDomain, "LoginServer")
-	out, err := cmd.Output()
-	if err != nil {
-		// key doesn't exist
-		return "", nil
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
-func (d *Darwin) ClearLoginServer() error {
-	cmd := exec.Command("defaults", "delete", tailscalePlistDomain, "LoginServer")
-	// ignore error — key may not exist
-	_ = cmd.Run()
-	return nil
 }
 
 func (d *Darwin) TailscaleBinaryPath() string {

@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"golang.org/x/sys/windows/registry"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 )
@@ -128,46 +127,6 @@ func (w *Windows) ProfileStateDirPath(profileID string) string {
 	return filepath.Join(appdata, "ganoid", "states", profileID)
 }
 
-func (w *Windows) SetLoginServer(url string) error {
-	k, _, err := registry.CreateKey(registry.LOCAL_MACHINE, tailscaleRegKey, registry.SET_VALUE)
-	if err != nil {
-		return fmt.Errorf("open registry key: %w", err)
-	}
-	defer k.Close()
-	if err := k.SetStringValue(tailscaleRegValue, url); err != nil {
-		return fmt.Errorf("set registry value: %w", err)
-	}
-	return nil
-}
-
-func (w *Windows) GetLoginServer() (string, error) {
-	k, err := registry.OpenKey(registry.LOCAL_MACHINE, tailscaleRegKey, registry.QUERY_VALUE)
-	if err != nil {
-		// Key doesn't exist = official Tailscale (no custom login server)
-		return "", nil
-	}
-	defer k.Close()
-
-	val, _, err := k.GetStringValue(tailscaleRegValue)
-	if err != nil {
-		return "", nil
-	}
-	return val, nil
-}
-
-func (w *Windows) ClearLoginServer() error {
-	k, err := registry.OpenKey(registry.LOCAL_MACHINE, tailscaleRegKey, registry.SET_VALUE)
-	if err != nil {
-		// Key doesn't exist, nothing to clear
-		return nil
-	}
-	defer k.Close()
-	err = k.DeleteValue(tailscaleRegValue)
-	if err != nil && err != registry.ErrNotExist {
-		return fmt.Errorf("delete registry value: %w", err)
-	}
-	return nil
-}
 
 func (w *Windows) TailscaleBinaryPath() string {
 	// Tailscale CLI is typically in ProgramFiles

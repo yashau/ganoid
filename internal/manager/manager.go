@@ -137,33 +137,29 @@ func (m *Manager) SwitchProfile(ctx context.Context, targetID string) <-chan eve
 			send(5, "No saved state for target profile — starting fresh")
 		}
 
-		// Step 6: Write login server
-		send(6, "Configuring login server…")
-		logger.Debug("step 6: setting login server to %q", targetProfile.LoginServer)
-		if targetProfile.LoginServer == "" {
-			if err := m.plat.ClearLoginServer(); err != nil {
-				logger.Error("step 6: clear login server failed: %v", err)
-				fail(6, fmt.Errorf("clear login server: %w", err))
-				return
-			}
-		} else {
-			if err := m.plat.SetLoginServer(targetProfile.LoginServer); err != nil {
-				logger.Error("step 6: set login server failed: %v", err)
-				fail(6, fmt.Errorf("set login server: %w", err))
-				return
-			}
-		}
-		logger.Debug("step 6: login server configured")
-
-		// Step 7: Start Tailscale daemon
-		send(7, "Starting Tailscale daemon…")
-		logger.Debug("step 7: starting Tailscale service")
+		// Step 6: Start Tailscale daemon
+		send(6, "Starting Tailscale daemon…")
+		logger.Debug("step 6: starting Tailscale service")
 		if err := m.plat.StartService(); err != nil {
-			logger.Error("step 7: start service failed: %v", err)
-			fail(7, fmt.Errorf("start service: %w", err))
+			logger.Error("step 6: start service failed: %v", err)
+			fail(6, fmt.Errorf("start service: %w", err))
 			return
 		}
-		logger.Debug("step 7: Tailscale service started")
+		logger.Debug("step 6: Tailscale service started")
+
+		// Step 7: Set login server via CLI (after service is running so it sticks)
+		loginServer := targetProfile.LoginServer
+		if loginServer == "" {
+			loginServer = "https://controlplane.tailscale.com"
+		}
+		send(7, "Configuring login server…")
+		logger.Debug("step 7: setting login server to %q", loginServer)
+		if err := m.runTailscale(ctx, "set", "--login-server", loginServer); err != nil {
+			logger.Error("step 7: tailscale set --login-server failed: %v", err)
+			fail(7, fmt.Errorf("set login server: %w", err))
+			return
+		}
+		logger.Debug("step 7: login server configured")
 
 		// Step 8: Update active profile in config
 		send(8, "Updating active profile…")
