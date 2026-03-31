@@ -41,12 +41,37 @@ func New(cfg *config.Config, mgr *manager.Manager, uiFS http.FileSystem, version
 		r.Get("/tailscale/status", s.handleTailscaleStatus)
 	})
 
-	// Serve embedded UI for all other routes (chi fileserver pattern)
+	// Serve embedded UI for all other routes.
+	// Real static assets (JS, CSS, images) are served normally.
+	// Unknown routes fall back to index.html served via http.ServeContent —
+	// NOT http.FileServer, which would redirect /index.html → / causing a loop.
 	if uiFS != nil {
 		s.router.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 			rctx := chi.RouteContext(r.Context())
 			pathPrefix := strings.TrimSuffix(rctx.RoutePattern(), "/*")
-			http.StripPrefix(pathPrefix, http.FileServer(uiFS)).ServeHTTP(w, r)
+			filePath := strings.TrimPrefix(r.URL.Path, pathPrefix)
+			if filePath == "" {
+				filePath = "/"
+			}
+			f, err := uiFS.Open(filePath)
+			if err == nil {
+				info, statErr := f.Stat()
+				if statErr == nil && !info.IsDir() {
+					http.StripPrefix(pathPrefix, http.FileServer(uiFS)).ServeHTTP(w, r)
+					f.Close()
+					return
+				}
+				f.Close()
+			}
+			// Fallback: serve SPA shell directly.
+			shell, err := uiFS.Open("index.html")
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			defer shell.Close()
+			info, _ := shell.Stat()
+			http.ServeContent(w, r, "index.html", info.ModTime(), shell)
 		})
 	} else {
 		s.router.Get("/*", func(w http.ResponseWriter, r *http.Request) {
