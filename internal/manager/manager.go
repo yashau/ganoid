@@ -154,6 +154,27 @@ func (m *Manager) SwitchProfile(ctx context.Context, targetID string) <-chan eve
 	return ch
 }
 
+// ActualControlURL returns the ControlURL Tailscale is currently using,
+// parsed from `tailscale debug prefs`. Returns "" for the official server.
+func (m *Manager) ActualControlURL(ctx context.Context) (string, error) {
+	cmd := exec.CommandContext(ctx, m.plat.TailscaleBinaryPath(), "debug", "prefs")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("tailscale debug prefs: %w", err)
+	}
+	var prefs struct {
+		ControlURL string `json:"ControlURL"`
+	}
+	if err := json.Unmarshal(out, &prefs); err != nil {
+		return "", fmt.Errorf("parse prefs: %w", err)
+	}
+	// Official Tailscale server — treat as empty to match profiles with no login server set.
+	if prefs.ControlURL == "https://controlplane.tailscale.com" {
+		return "", nil
+	}
+	return prefs.ControlURL, nil
+}
+
 // TailscaleStatus queries `tailscale status --json`.
 func (m *Manager) TailscaleStatus(ctx context.Context) (*TailscaleStatus, error) {
 	cmd := exec.CommandContext(ctx, m.plat.TailscaleBinaryPath(), "status", "--json")
