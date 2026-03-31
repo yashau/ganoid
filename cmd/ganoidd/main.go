@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"time"
@@ -49,15 +50,35 @@ func startServer(port int) (shutdown func(), err error) {
 	mgr := manager.New(cfg, plat, func() {})
 
 	// Reconcile: if Tailscale's actual ControlURL doesn't match the profile
-	// Ganoid thinks is active, find the matching profile and correct it.
+	// Ganoid thinks is active, find or create the matching profile.
 	if actualURL, err := mgr.ActualControlURL(context.Background()); err == nil {
 		activeProfile, _ := cfg.ActiveProfile()
 		if activeProfile.LoginServer != actualURL {
 			store := cfg.GetStore()
+			matched := false
 			for _, p := range store.Profiles {
 				if p.LoginServer == actualURL {
 					_ = cfg.SetActiveProfile(p.ID)
+					matched = true
 					break
+				}
+			}
+			if !matched && actualURL != "" {
+				// No profile exists for this login server — create one.
+				host := actualURL
+				if u, err := url.Parse(actualURL); err == nil && u.Host != "" {
+					host = u.Host
+				}
+				id := fmt.Sprintf("auto-%d", time.Now().UnixMilli())
+				p := config.Profile{
+					ID:          id,
+					Name:        host,
+					LoginServer: actualURL,
+					CreatedAt:   time.Now().UTC(),
+					LastUsed:    time.Now().UTC(),
+				}
+				if err := cfg.AddProfile(p); err == nil {
+					_ = cfg.SetActiveProfile(id)
 				}
 			}
 		}
