@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -40,9 +41,13 @@ func New(cfg *config.Config, mgr *manager.Manager, uiFS http.FileSystem, version
 		r.Get("/tailscale/status", s.handleTailscaleStatus)
 	})
 
-	// Serve embedded UI for all other routes
+	// Serve embedded UI for all other routes (chi fileserver pattern)
 	if uiFS != nil {
-		s.router.Handle("/*", http.FileServer(uiFS))
+		s.router.Get("/*", func(w http.ResponseWriter, r *http.Request) {
+			rctx := chi.RouteContext(r.Context())
+			pathPrefix := strings.TrimSuffix(rctx.RoutePattern(), "/*")
+			http.StripPrefix(pathPrefix, http.FileServer(uiFS)).ServeHTTP(w, r)
+		})
 	} else {
 		s.router.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/plain")
