@@ -12,8 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/yashau/ganoid/releases/latest"><img src="https://img.shields.io/github/v/release/yashau/ganoid?style=flat-square" alt="Latest Release" /></a>
-  <a href="https://github.com/yashau/ganoid/releases/latest"><img src="https://img.shields.io/github/downloads/yashau/ganoid/total?style=flat-square" alt="Downloads" /></a>
-  <img src="https://img.shields.io/badge/platform-Windows-blue?style=flat-square" alt="Platform: Windows" />
+<img src="https://img.shields.io/badge/platform-Windows-blue?style=flat-square" alt="Platform: Windows" />
   <img src="https://img.shields.io/badge/go-1.26+-00ADD8?style=flat-square&logo=go" alt="Go Version" />
 </p>
 
