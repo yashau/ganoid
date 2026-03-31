@@ -55,9 +55,9 @@ func New(cfg *config.Config, mgr *manager.Manager, uiFS http.FileSystem, version
 			}
 			f, err := uiFS.Open(filePath)
 			if err != nil {
-				// Not a real file — let the SPA handle the route.
+				// Not a real file — serve the SPA fallback so client-side routing handles it.
 				r2 := r.Clone(r.Context())
-				r2.URL.Path = pathPrefix + "/index.html"
+				r2.URL.Path = pathPrefix + "/200.html"
 				http.StripPrefix(pathPrefix, http.FileServer(uiFS)).ServeHTTP(w, r2)
 				return
 			}
