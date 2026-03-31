@@ -46,6 +46,23 @@ func startServer(port int) (shutdown func(), err error) {
 	}
 
 	plat := platform.New()
+
+	// Reconcile: if Tailscale's actual login server doesn't match the
+	// profile Ganoid thinks is active, find the matching profile and
+	// correct the active profile ID.
+	if actualLoginServer, err := plat.GetLoginServer(); err == nil {
+		store := cfg.GetStore()
+		activeProfile, _ := cfg.ActiveProfile()
+		if activeProfile.LoginServer != actualLoginServer {
+			for _, p := range store.Profiles {
+				if p.LoginServer == actualLoginServer {
+					_ = cfg.SetActiveProfile(p.ID)
+					break
+				}
+			}
+		}
+	}
+
 	mgr := manager.New(cfg, plat, func() {})
 
 	distFS, err := fs.Sub(uiFiles, "ui/dist")
