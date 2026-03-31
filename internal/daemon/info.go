@@ -19,7 +19,7 @@ type Info struct {
 // InfoPath returns the path to the daemon connection info file.
 func InfoPath() string {
 	if runtime.GOOS == "windows" {
-		return filepath.Join(os.Getenv("APPDATA"), "ganoid", "daemon.json")
+		return filepath.Join(os.Getenv("ProgramData"), "Ganoid", "daemon.json")
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "ganoid", "daemon.json")
