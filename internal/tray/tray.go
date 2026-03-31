@@ -54,8 +54,12 @@ func onReady(h *client.Holder, rebuildCh <-chan struct{}) {
 			cancel()
 
 			if err == nil && status != nil {
-				statusItem.SetTitle(fmt.Sprintf("Status: %s (%s)",
-					status.Tailscale.BackendState, status.ActiveProfile.Name))
+				state := status.Tailscale.BackendState
+				if state == "Not installed" {
+					statusItem.SetTitle("Status: Tailscale not installed")
+				} else {
+					statusItem.SetTitle(fmt.Sprintf("Status: %s (%s)", state, status.ActiveProfile.Name))
+				}
 			} else {
 				statusItem.SetTitle("Status: ganoidd unreachable")
 			}
