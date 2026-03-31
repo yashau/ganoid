@@ -66,6 +66,8 @@ Open the dashboard via the tray icon or by double-clicking it. It includes:
 - **Profiles** — add, edit, and delete profiles
 - **Settings** — configure the listening port
 
+All pages support direct navigation and browser refresh.
+
 ## How it works
 
 ### Profile switching
