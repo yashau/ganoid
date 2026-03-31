@@ -70,7 +70,7 @@ After switching to a new profile for the first time, Tailscale will be in the `N
 
 The dashboard is served by `ganoidd` and opens automatically in your browser when `ganoid` starts. It includes:
 
-- **Dashboard** — active profile, Tailscale backend state, peer count, one-click profile switching with live progress
+- **Dashboard** — active profile, Tailscale backend state, peer count, one-click profile switching with live progress. Open it from the system tray icon.
 - **Profiles** — add, edit, and delete profiles
 - **Settings** — configure the port and other options
 

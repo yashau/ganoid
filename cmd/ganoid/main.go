@@ -20,7 +20,6 @@ var (
 )
 
 func main() {
-	noBrowser  := flag.Bool("no-browser", false, "Do not open browser on start")
 	noTray     := flag.Bool("no-tray", false, "Disable systray icon")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
@@ -37,7 +36,6 @@ func main() {
 	// Updates holder and notifies the tray whenever the connection state changes.
 	go func() {
 		var lastConnected bool
-		var browserOpened bool
 
 		for {
 			info, err := daemon.Read()
@@ -73,11 +71,6 @@ func main() {
 				holder.Set(c)
 				notify()
 				lastConnected = true
-
-				if !browserOpened && !*noBrowser {
-					tray.OpenBrowser(c.DashboardURL())
-					browserOpened = true
-				}
 			}
 
 			time.Sleep(5 * time.Second)

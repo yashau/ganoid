@@ -159,8 +159,7 @@ Write-Step "Creating Start Menu shortcuts"
 $startMenu = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Ganoid"
 if (-not (Test-Path $startMenu)) { New-Item -ItemType Directory -Path $startMenu | Out-Null }
 
-New-Shortcut "$startMenu\Ganoid.lnk"              "$InstallDir\ganoid.exe" ''            'Ganoid — Tailscale profile manager'
-New-Shortcut "$startMenu\Ganoid (no browser).lnk" "$InstallDir\ganoid.exe" '-no-browser' 'Ganoid — start tray without opening browser'
+New-Shortcut "$startMenu\Ganoid.lnk" "$InstallDir\ganoid.exe" '' 'Ganoid — Tailscale profile manager'
 Write-OK "Start Menu shortcuts created"
 
 Write-Step "Adding ganoid to current user Startup"
