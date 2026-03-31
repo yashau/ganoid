@@ -131,6 +131,10 @@ Ganoid config and profile state backups are left intact.
 
 The build script compiles the SvelteKit UI, generates Windows version resources, and produces `ganoidd.exe` + `ganoid.exe` with version metadata embedded.
 
+## Platform support
+
+Ganoid is developed and tested on Windows only. The codebase includes Linux and macOS stubs that compile but are not functional. If you're interested in bringing Ganoid to other platforms, feel free to fork the repo, implement the platform layer, and submit a PR.
+
 ## License
 
 Copyright (c) 2026 Ibrahim Yashau. All rights reserved.
