@@ -98,6 +98,8 @@ func onReady(h *client.Holder, rebuildCh <-chan struct{}, userQuit chan struct{}
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-openItem.ClickedCh:
 			c := h.Get()
 			if c == nil {
