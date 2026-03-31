@@ -102,13 +102,13 @@ try {
         New-WinResource `
             (Join-Path $PSScriptRoot "cmd\ganoidd") `
             "ganoidd" `
-            "Ganoid Daemon — Tailscale profile coordination server" `
+            "Ganoid Daemon - Tailscale profile coordination server" `
             "ganoidd.exe"
 
         New-WinResource `
             (Join-Path $PSScriptRoot "cmd\ganoid") `
             "ganoid" `
-            "Ganoid — Tailscale profile manager tray application" `
+            "Ganoid - Tailscale profile manager tray application" `
             "ganoid.exe"
     }
 

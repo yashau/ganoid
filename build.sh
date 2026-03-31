@@ -96,9 +96,9 @@ build_pair() {
 if [ "$TARGET" = "windows" ] || [ "$TARGET" = "all" ]; then
     echo -e "\033[33mGenerating Windows resources...\033[0m"
     gen_resource "${SCRIPT_DIR}/cmd/ganoidd" "ganoidd" \
-        "Ganoid Daemon — Tailscale profile coordination server" "ganoidd.exe"
+        "Ganoid Daemon - Tailscale profile coordination server" "ganoidd.exe"
     gen_resource "${SCRIPT_DIR}/cmd/ganoid" "ganoid" \
-        "Ganoid — Tailscale profile manager tray application" "ganoid.exe"
+        "Ganoid - Tailscale profile manager tray application" "ganoid.exe"
 fi
 
 # ── Compile ───────────────────────────────────────────────────────────────────
