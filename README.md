@@ -82,7 +82,7 @@ The web UI is served by `ganoidd` at `http://localhost:57400`.
 
 - **Dashboard** — active profile, Tailscale state, peer count, one-click switching with live progress
 - **Profiles** — add, edit, and delete profiles
-- **Settings** — coming soon
+- **Settings** — port configuration (stub, not yet functional)
 
 Direct navigation and page refresh work on all routes.
 
